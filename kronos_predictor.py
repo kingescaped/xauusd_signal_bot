@@ -3,7 +3,7 @@ import numpy as np
 import config
 
 def calculate_volatility(df, window=14):
-    """Tính độ biến động trung bình (ATR) để gợi ý SL/TP theo giá Vàng."""
+    """Tính độ biến động trung bình (ATR) thích ứng cho cả Vàng và Bitcoin."""
     high = df['high']
     low = df['low']
     close = df['close'].shift(1)
@@ -16,38 +16,41 @@ def calculate_volatility(df, window=14):
     atr = tr.rolling(window).mean().iloc[-1]
     return round(float(atr), 2) if not np.isnan(atr) else 5.0
 
-def predict_future(df):
+def predict_future(df, symbol_name):
     """
-    Module phân tích & dự báo xu hướng nến Vàng:
-    - Đầu vào: DataFrame nến OHLCV (open, high, low, close, volume).
-    - Đầu ra: Hướng dự báo, độ tin cậy (%), Giá kỳ vọng (TP), Cắt lỗ (SL).
+    Phân tích & dự báo xu hướng nến M15 cho từng sản phẩm:
+    - Vàng (XAUUSD): biến động vài giá ($/oz).
+    - Bitcoin (BTCUSD): biến động vài trăm đến nghìn USD.
     """
     current_price = float(df['close'].iloc[-1])
     atr = calculate_volatility(df)
     
     # -------------------------------------------------------------------------
     # GHI CHÚ TÍCH HỢP KRONOS FOUNDATION MODEL:
-    # Khi bạn clone repo shiyu-coder/Kronos và tải checkpoint weights về,
-    # mã nguồn tại đây sẽ gọi:
-    #   tokens = kronos_tokenizer.encode(df[['open','high','low','close','volume']])
-    #   prediction = kronos_model.generate(tokens, num_samples=100)
+    # Sau khi tải trọng số Kronos (shiyu-coder/Kronos),
+    # đầu vào sẽ là df[['open', 'high', 'low', 'close', 'volume']]
+    # để mô hình autoregressive sinh nến tương lai.
     # -------------------------------------------------------------------------
-    
-    # Logic phân tích động lượng & nến gần nhất (làm cơ sở baseline)
-    ma_short = df['close'].tail(9).mean()
+
+    # Phân tích kỹ thuật đa khung & động lượng làm baseline
+    ma_short = df['close'].tail(7).mean()
     ma_long = df['close'].tail(21).mean()
-    momentum = current_price - df['close'].iloc[-5]
+    momentum = current_price - df['close'].iloc[-4]
     
+    # Tỷ lệ R:R chuẩn (TP: 1.5 - 2.0 ATR, SL: 1.0 ATR)
+    tp_multiplier = 1.8
+    sl_multiplier = 1.0
+
     if ma_short > ma_long and momentum > 0:
         direction = "🟢 BUY (TĂNG)"
-        confidence = round(70.0 + min(abs(momentum) * 1.5, 22.0), 1)
-        tp = current_price + (atr * 1.8)
-        sl = current_price - (atr * 1.0)
+        confidence = round(70.0 + min(abs(momentum) / atr * 5.0, 24.0), 1)
+        tp = current_price + (atr * tp_multiplier)
+        sl = current_price - (atr * sl_multiplier)
     elif ma_short < ma_long and momentum < 0:
         direction = "🔴 SELL (GIẢM)"
-        confidence = round(70.0 + min(abs(momentum) * 1.5, 22.0), 1)
-        tp = current_price - (atr * 1.8)
-        sl = current_price + (atr * 1.0)
+        confidence = round(70.0 + min(abs(momentum) / atr * 5.0, 24.0), 1)
+        tp = current_price - (atr * tp_multiplier)
+        sl = current_price + (atr * sl_multiplier)
     else:
         direction = "⚪ SIDEWAY (ĐI NGANG)"
         confidence = 50.0

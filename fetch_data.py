@@ -3,33 +3,24 @@ import pandas as pd
 from datetime import datetime
 import config
 
-def get_gold_candles(symbol=config.SYMBOL, timeframe=config.TIMEFRAME, limit=config.CANDLE_LIMIT):
+def get_candles(ticker, timeframe=config.TIMEFRAME, limit=config.CANDLE_LIMIT):
     """
-    Kéo dữ liệu nến Vàng thế giới từ Yahoo Finance.
-    Khung '1h' sẽ lấy period='7d' để đủ số nến cần thiết.
+    Kéo dữ liệu nến cho bất kỳ mã nào (Vàng 'GC=F', Bitcoin 'BTC-USD') từ Yahoo Finance.
     """
     try:
-        # Ánh xạ interval sang period thích hợp của yfinance
-        period_map = {
-            "15m": "5d",
-            "1h": "14d",
-            "4h": "60d",
-            "1d": "1y"
-        }
-        period = period_map.get(timeframe, "14d")
+        # Với khung 15m, Yahoo Finance hỗ trợ tối đa period='60d' (dùng 5d là rất nhanh và đủ)
+        period = "5d" if timeframe == "15m" else "14d"
         
-        # Tải dữ liệu từ Yahoo Finance
-        df = yf.download(tickers=symbol, period=period, interval=timeframe, progress=False)
+        df = yf.download(tickers=ticker, period=period, interval=timeframe, progress=False)
         
         if df.empty:
-            print(f"[CẢNH BÁO] Không lấy được dữ liệu nến cho mã {symbol}!")
+            print(f"[CẢNH BÁO] Không lấy được dữ liệu nến cho mã {ticker}!")
             return None
         
-        # Xử lý đa chỉ mục (MultiIndex) nếu có trong các bản yfinance mới
+        # Xử lý MultiIndex nếu có
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [col[0] for col in df.columns]
             
-        # Chuẩn hóa tên cột
         df = df.rename(columns={
             'Open': 'open',
             'High': 'high',
@@ -38,25 +29,24 @@ def get_gold_candles(symbol=config.SYMBOL, timeframe=config.TIMEFRAME, limit=con
             'Volume': 'volume'
         })
         
-        # Chỉ giữ lại các cột cần thiết và lấy số nến theo limit
         df = df[['open', 'high', 'low', 'close', 'volume']].tail(limit).copy()
         df.reset_index(inplace=True)
         
-        # Đổi tên cột thời gian về 'time'
+        # Chuẩn hóa tên cột thời gian về 'time'
         time_col = df.columns[0]
         df.rename(columns={time_col: 'time'}, inplace=True)
         
         return df
 
     except Exception as e:
-        print(f"[LỖI] Xảy ra lỗi khi kéo dữ liệu nến: {e}")
+        print(f"[LỖI] Kéo nến {ticker} thất bại: {e}")
         return None
 
 if __name__ == "__main__":
-    print(f"Đang kiểm tra kéo nến Vàng ({config.SYMBOL}) khung {config.TIMEFRAME}...")
-    candles = get_gold_candles()
-    if candles is not None:
-        print("Kéo nến thành công! Dữ liệu 5 cây nến mới nhất:")
-        print(candles.tail())
-    else:
-        print("Kéo nến thất bại!")
+    for item in config.SYMBOLS:
+        print(f"Kiểm tra kéo nến {item['name']} ({item['ticker']}) khung {config.TIMEFRAME}...")
+        c = get_candles(item['ticker'])
+        if c is not None:
+            print(f"-> Thành công! Nến mới nhất: {c['time'].iloc[-1]} | Giá Close: {c['close'].iloc[-1]:.2f}")
+        else:
+            print("-> Thất bại!")

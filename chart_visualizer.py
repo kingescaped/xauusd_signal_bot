@@ -5,16 +5,13 @@ import mplfinance as mpf
 import pandas as pd
 import os
 
-def create_signal_chart(df, predicted_direction, current_price, tp, sl, output_path="signal_chart.png"):
+def create_signal_chart(df, symbol_name, symbol_label, unit, predicted_direction, current_price, tp, sl, output_path="signal_chart.png"):
     """
-    Vẽ biểu đồ nến 35 cây gần nhất kèm các đường Target (TP) và Cắt lỗ (SL),
-    sau đó xuất ra file ảnh để gửi vào nhóm Telegram.
+    Vẽ biểu đồ nến 35 cây gần nhất cho Vàng hoặc Bitcoin kèm đường TP, SL,
+    xuất file ảnh để gửi vào nhóm Telegram.
     """
     try:
-        # Lấy 35 cây nến gần nhất
         plot_df = df.tail(35).copy()
-        
-        # Đảm bảo index là DatetimeIndex chuẩn cho mplfinance
         plot_df['time'] = pd.to_datetime(plot_df['time'])
         plot_df.set_index('time', inplace=True)
         
@@ -26,7 +23,6 @@ def create_signal_chart(df, predicted_direction, current_price, tp, sl, output_p
             'volume': 'Volume'
         }, inplace=True)
 
-        # Style nến hiện đại (nền tối, nến xanh tăng / đỏ giảm)
         mc = mpf.make_marketcolors(
             up='#26a69a', down='#ef5350',
             edge='inherit',
@@ -42,7 +38,6 @@ def create_signal_chart(df, predicted_direction, current_price, tp, sl, output_p
             edgecolor='#2d3748'
         )
 
-        # Vẽ thêm các đường TP và SL lên biểu đồ
         hlines = dict(
             hlines=[tp, current_price, sl],
             colors=['#00e676', '#ffd600', '#ff1744'],
@@ -50,19 +45,18 @@ def create_signal_chart(df, predicted_direction, current_price, tp, sl, output_p
             linewidths=1.2
         )
 
-        title = f"XAUUSD (GOLD 1H) | SIGNAL: {predicted_direction}\nCurrent: ${current_price:.2f} | TP: ${tp:.2f} | SL: ${sl:.2f}"
+        title = f"{symbol_label} (M15) | SIGNAL: {predicted_direction}\nCurrent: {current_price:.2f} | TP: {tp:.2f} | SL: {sl:.2f}"
 
-        # Xuất file ảnh độ phân giải cao
         mpf.plot(
             plot_df,
             type='candle',
             style=s,
             hlines=hlines,
-            title=dict(title=title, color='white', size=11),
-            ylabel='Price ($/oz)',
-            savefig=dict(fname=output_path, dpi=140, bbox_inches='tight', facecolor='#1a202c')
+            title=dict(title=title, color='white', size=10),
+            ylabel=f'Price ({unit})',
+            savefig=dict(fname=output_path, dpi=130, bbox_inches='tight', facecolor='#1a202c')
         )
         return output_path
     except Exception as e:
-        print(f"[CẢNH BÁO] Lỗi khi tạo biểu đồ: {e}")
+        print(f"[CẢNH BÁO] Lỗi khi tạo biểu đồ cho {symbol_name}: {e}")
         return None

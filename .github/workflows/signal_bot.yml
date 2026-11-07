@@ -1,12 +1,15 @@
-name: Kronos Gold Telegram Signal Bot
+name: Kronos Gold & Bitcoin Telegram Signal Bot (M15)
 
 on:
-  # Chạy tự động sau khi đóng mỗi cây nến 1 Giờ (vào phút thứ 03)
+  # Chạy tự động mỗi 15 phút (khung nến M15)
   schedule:
-    - cron: '3 * * * *'
+    - cron: '*/15 * * * *'
   
   # Cho phép bấm nút "Run workflow" để chạy thủ công bất cứ lúc nào trên GitHub
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   run-signal-bot:
@@ -15,6 +18,8 @@ jobs:
     steps:
       - name: 📥 Kéo mã nguồn từ Repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: 🐍 Cài đặt môi trường Python
         uses: actions/setup-python@v5
@@ -27,9 +32,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🚀 Chạy quét nến Vàng & Bắn tín hiệu Telegram
+      - name: 🚀 Quét nến M15 (Vàng & Bitcoin) & Báo cáo 6:00 sáng
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9193848531:AAGphQqE0tP_SGxiiBMRUaZUL0umU_L14yY' }}
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID || '-1002144845536' }}
         run: |
           python main.py --once
+
+      - name: 💾 Lưu lại lịch sử tín hiệu TP/SL vào Repository
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -f signals_history.json ]; then
+            git add signals_history.json
+            git commit -m "chore: lưu lịch sử tín hiệu và trạng thái TP/SL [skip ci]" || echo "Không có thay đổi lịch sử"
+            git push origin main || echo "Không thể push hoặc đã là mới nhất"
+          fi
