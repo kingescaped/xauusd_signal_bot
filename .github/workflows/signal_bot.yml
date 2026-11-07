@@ -1,0 +1,35 @@
+name: Kronos Gold Telegram Signal Bot
+
+on:
+  # Chạy tự động sau khi đóng mỗi cây nến 1 Giờ (vào phút thứ 03)
+  schedule:
+    - cron: '3 * * * *'
+  
+  # Cho phép bấm nút "Run workflow" để chạy thủ công bất cứ lúc nào trên GitHub
+  workflow_dispatch:
+
+jobs:
+  run-signal-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Kéo mã nguồn từ Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Cài đặt môi trường Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 📦 Cài đặt các thư viện cần thiết
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🚀 Chạy quét nến Vàng & Bắn tín hiệu Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9193848531:AAGphQqE0tP_SGxiiBMRUaZUL0umU_L14yY' }}
+          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID || '-1002144845536' }}
+        run: |
+          python main.py --once
