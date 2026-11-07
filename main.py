@@ -22,6 +22,10 @@ def check_and_send_daily_report_if_due():
 def run_single_cycle(manual_force=False):
     now_vn = datetime.now(timezone(timedelta(hours=7)))
     print(f"\n[{now_vn.strftime('%Y-%m-%d %H:%M:%S')} VN] Bắt đầu chu kỳ quét nến...")
+    if manual_force:
+        print("⚡ [BẤM TAY THỦ CÔNG] Bạn vừa bấm nút 'Run workflow' -> LUÔN GỬI biểu đồ và kết quả phân tích về nhóm Telegram!")
+    else:
+        print("🤖 [CHẠY TỰ ĐỘNG THEO LỊCH] Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= 70%.")
 
     # 1. Kiểm tra gửi báo cáo 6:00 sáng
     check_and_send_daily_report_if_due()
@@ -38,11 +42,12 @@ def run_single_cycle(manual_force=False):
         pred_len = item['predict_len']
         period = item['period']
 
-        # Nếu là nến 1H, chỉ quét phát tín hiệu mới vào đầu mỗi tiếng (phút 00 - 15) hoặc khi bấm nút chạy thủ công
+        # XỬ LÝ KHUNG NẾN 1H:
+        # Nếu chạy tự động theo lịch: chỉ quét phát tín hiệu mới khi nến 1H đóng cửa (phút 00 - 15).
+        # Nếu BẤM TAY (manual_force=True): Luôn quét và phát tín hiệu ngay lập tức!
         is_top_of_hour = now_vn.minute < 16
         if timeframe.lower() == "1h" and not is_top_of_hour and not manual_force:
-            print(f"[{symbol_name} - 1H] Chưa đến giờ đóng nến 1H (hiện tại phút {now_vn.minute}). Bỏ qua quét tín hiệu mới.")
-            # Vẫn kéo nến để kiểm tra trạng thái chạm TP/SL của các lệnh trước đó
+            print(f"[{symbol_name} - 1H] Chưa đóng nến 1H (phút {now_vn.minute}) -> Chờ đến đầu tiếng tiếp theo.")
             df_check = get_candles(ticker, timeframe="15m", period="2d", limit=5)
             if df_check is not None and len(df_check) > 0:
                 last_c = df_check.iloc[-1]
@@ -61,15 +66,37 @@ def run_single_cycle(manual_force=False):
         current_low = float(latest_candle['low'])
         current_close = float(latest_candle['close'])
 
-        # Cập nhật xem các lệnh đang chạy trước đó có chạm TP/SL không
+        # Cập nhật xem các lệnh trước đó có chạm TP/SL không
         update_open_signals(symbol_name, current_high, current_low, current_close, current_time_str)
 
         # Phân tích dự báo bằng Kronos-base
         result = predict_future(df, symbol_name, timeframe=timeframe, pred_len=pred_len)
         print(f"-> Phân tích {symbol_name} ({timeframe}): {result['direction']} | Độ tin cậy: {result['confidence']}%")
 
-        # Kiểm tra điều kiện bắn tín hiệu
-        if result['confidence'] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result['direction']:
+        tf_label = "M15" if timeframe.lower() == "15m" else "H1"
+        is_high_confidence = (result['confidence'] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result['direction'])
+
+        # Luôn vẽ ảnh biểu đồ nến
+        chart_filename = f"chart_{symbol_name.lower()}.png"
+        chart_path = os.path.join(os.path.dirname(__file__), chart_filename)
+        create_signal_chart(
+            df=df,
+            symbol_name=symbol_name,
+            symbol_label=label,
+            timeframe=timeframe,
+            unit=unit,
+            predicted_direction=result['direction'],
+            current_price=result['current_price'],
+            tp=result['tp'],
+            sl=result['sl'],
+            output_path=chart_path
+        )
+
+        # =========================================================================
+        # TRƯỜNG HỢP 1: Có kèo đẹp (Độ tin cậy >= 70% và không Sideway)
+        # -> Cả bấm tay lẫn chạy ngầm đều bắn cảnh báo vào lệnh!
+        # =========================================================================
+        if is_high_confidence:
             added, reason = add_new_signal(
                 symbol=symbol_name,
                 direction=result['direction'],
@@ -80,54 +107,60 @@ def run_single_cycle(manual_force=False):
                 timeframe=timeframe
             )
 
-            if added:
-                tf_label = "M15" if timeframe.lower() == "15m" else "H1"
-                chart_filename = f"chart_{symbol_name.lower()}.png"
-                chart_path = os.path.join(os.path.dirname(__file__), chart_filename)
-                
-                create_signal_chart(
-                    df=df,
-                    symbol_name=symbol_name,
-                    symbol_label=label,
-                    timeframe=timeframe,
-                    unit=unit,
-                    predicted_direction=result['direction'],
-                    current_price=result['current_price'],
-                    tp=result['tp'],
-                    sl=result['sl'],
-                    output_path=chart_path
-                )
+            caption = (
+                f"🎯 *[KRONOS-BASE AI] - TÍN HIỆU VÀO LỆNH {label}*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
+                f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
+                f"🚀 *Tín hiệu:* *{result['direction']}*\n"
+                f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn $\ge$ 70%)\n"
+                f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
+                f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
+                f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
+                "⚠️ _Hệ thống tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
+            )
 
-                # Soạn tin nhắn Telegram
-                caption = (
-                    f"🔔 *[KRONOS-BASE AI] - TÍN HIỆU {label}*\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
-                    f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
-                    f"🎯 *Tín hiệu:* *{result['direction']}*\n"
-                    f"📈 *Độ tin cậy:* `{result['confidence']}%`\n"
-                    f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🚀 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
-                    f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
-                    f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
-                    "⚠️ _Mô hình AI Kronos-base tự động theo dõi TP/SL và báo cáo lúc 06:00 sáng!_"
-                )
-
-                if os.path.exists(chart_path):
-                    send_telegram_photo(chart_path, caption)
-                else:
-                    send_telegram_message(caption)
+            if os.path.exists(chart_path):
+                send_telegram_photo(chart_path, caption)
             else:
-                print(f"-> {symbol_name}: {reason}")
+                send_telegram_message(caption)
+
+        # =========================================================================
+        # TRƯỜNG HỢP 2: Khi BẠN BẤM TAY ("Run workflow") nhưng thị trường Sideway / < 70%
+        # -> LUÔN GỬI biểu đồ kèm thông báo để bạn kiểm tra trực quan!
+        # =========================================================================
+        elif manual_force:
+            caption = (
+                f"📊 *[KRONOS-BASE AI] - CẬP NHẬT PHÂN TÍCH {label}*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
+                f"💰 *Giá hiện tại:* `{result['current_price']} {unit}`\n"
+                f"🎯 *Trạng thái:* *{result['direction']}*\n"
+                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần $\ge$ 70% để vào lệnh)*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "💡 *Nhận định AI:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!"
+            )
+
+            if os.path.exists(chart_path):
+                send_telegram_photo(chart_path, caption)
+            else:
+                send_telegram_message(caption)
+
+        # =========================================================================
+        # TRƯỜNG HỢP 3: Khi chạy tự động ngầm theo lịch mà không có kèo đẹp
+        # -> Không làm phiền nhóm chat
+        # =========================================================================
         else:
-            print(f"-> {symbol_name}: Độ tin cậy {result['confidence']}% chưa đạt {config.CONFIDENCE_THRESHOLD}% hoặc đang Sideway.")
+            print(f"-> {symbol_name}: Đang chạy ngầm, độ tin cậy {result['confidence']}% chưa đạt {config.CONFIDENCE_THRESHOLD}% hoặc Sideway -> Giữ yên lặng cho nhóm.")
 
 def main():
     parser = argparse.ArgumentParser(description="Kronos Gold (1H) & BTC (M15) Signal Bot")
     parser.add_argument("--test", action="store_true", help="Kiểm tra kết nối Telegram vào nhóm")
     parser.add_argument("--report", action="store_true", help="Gửi ngay báo cáo tổng hợp 24h vào nhóm")
-    parser.add_argument("--once", action="store_true", help="Chạy quét 1 chu kỳ ngay bây giờ (cho GitHub Actions)")
+    parser.add_argument("--once", action="store_true", help="Chạy quét 1 chu kỳ ngay bây giờ")
+    parser.add_argument("--force", action="store_true", help="Ép buộc gửi ảnh biểu đồ kể cả lúc Sideway (cho chế độ bấm tay)")
     args = parser.parse_args()
 
     if args.test:
@@ -141,9 +174,14 @@ def main():
         send_telegram_message(report_text)
         return
 
+    # Nhận diện: Nếu được kích hoạt thủ công từ GitHub Actions ("workflow_dispatch") hoặc có cờ --force
+    github_event = os.getenv("GITHUB_EVENT_NAME")
+    is_github_manual = (github_event == "workflow_dispatch")
+    is_force = args.force or is_github_manual or (github_event is None and args.once)
+
     if args.once:
-        print("Chạy quét 1 chu kỳ (Single Run Mode)...")
-        run_single_cycle(manual_force=True)
+        print(f"Chạy quét 1 chu kỳ (Single Run Mode | Chế độ ép buộc gửi tin nhắn: {is_force})...")
+        run_single_cycle(manual_force=is_force)
         return
 
     print("==================================================")
@@ -154,7 +192,7 @@ def main():
     print("==================================================")
     
     run_single_cycle(manual_force=True)
-    schedule.every(15).minutes.do(run_single_cycle)
+    schedule.every(15).minutes.do(lambda: run_single_cycle(manual_force=False))
 
     while True:
         schedule.run_pending()

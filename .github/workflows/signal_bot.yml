@@ -1,4 +1,4 @@
-name: Kronos-base Gold & Bitcoin Signal Bot (M15)
+name: Kronos-base Gold & Bitcoin Signal Bot
 
 on:
   # Chạy tự động mỗi 15 phút (khung nến M15)
@@ -39,12 +39,19 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
 
-      - name: 🚀 Chạy mô hình KRONOS-BASE phân tích nến M15 & Báo cáo
+      - name: 🚀 Chạy mô hình KRONOS-BASE phân tích nến (BTC M15 & Vàng 1H)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9193848531:AAGphQqE0tP_SGxiiBMRUaZUL0umU_L14yY' }}
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID || '-1002144845536' }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          python main.py --once
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "⚡ Phát hiện bạn bấm nút 'Run workflow' -> Kích hoạt chế độ gửi ảnh biểu đồ trực quan ngay lập tức!"
+            python main.py --once --force
+          else
+            echo "🤖 Chế độ tự động chạy ngầm theo lịch -> Chỉ bắn tín hiệu khi độ tin cậy >= 70%"
+            python main.py --once
+          fi
 
       - name: 💾 Lưu lại lịch sử tín hiệu TP/SL vào Repository
         run: |
