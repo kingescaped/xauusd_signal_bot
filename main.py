@@ -10,6 +10,31 @@ from chart_visualizer import create_signal_chart
 from history_tracker import add_new_signal, update_open_signals, generate_daily_report
 from telegram_notifier import send_telegram_photo, send_telegram_message, test_telegram
 
+def is_market_open(symbol_name, now_vn):
+    """
+    Kiểm tra thị trường có đang mở cửa không:
+    - BTCUSD: Crypto mở cửa 24/7 không nghỉ.
+    - XAUUSD (Vàng thế giới):
+        + Đóng cửa cuối tuần: Từ 05:00 sáng Thứ Bảy đến 06:00 sáng Thứ Hai (giờ VN).
+        + Nghỉ bảo trì kỹ thuật hàng ngày: 05:00 - 06:00 sáng từ Thứ Ba đến Thứ Sáu.
+    """
+    if symbol_name != "XAUUSD":
+        return True, "Thị trường Crypto mở cửa 24/7"
+
+    weekday = now_vn.weekday()  # 0: Thứ 2, 1: Thứ 3, ..., 5: Thứ 7, 6: Chủ Nhật
+    hour = now_vn.hour
+
+    if weekday == 5 and hour >= 5:
+        return False, "Thị trường Vàng đã đóng cửa cuối tuần (từ 05:00 sáng Thứ Bảy). Sẽ mở lại lúc 06:00 sáng Thứ Hai tới!"
+    if weekday == 6:
+        return False, "Hôm nay là Chủ Nhật: Thị trường Vàng đang đóng cửa cuối tuần. Sẽ mở lại lúc 06:00 sáng Thứ Hai tới!"
+    if weekday == 0 and hour < 6:
+        return False, "Thị trường Vàng chưa mở cửa tuần mới (Mở lúc 06:00 sáng Thứ Hai VN)."
+    if weekday in [1, 2, 3, 4] and hour == 5:
+        return False, "Giờ nghỉ kỹ thuật hằng ngày của Vàng thế giới (05:00 - 06:00 sáng VN)."
+
+    return True, "Thị trường Vàng đang mở cửa giao dịch bình thường"
+
 def check_and_send_daily_report_if_due():
     """Kiểm tra nếu đang trong khoảng 06:00 - 06:15 sáng (giờ VN) thì gửi báo cáo 24h."""
     now_vn = datetime.now(timezone(timedelta(hours=7)))
@@ -41,6 +66,23 @@ def run_single_cycle(manual_force=False):
         unit = item['unit']
         pred_len = item['predict_len']
         period = item['period']
+
+        # KIỂM TRA GIỜ MỞ/ĐÓNG CỬA THỊ TRƯỜNG (Áp dụng riêng cho Vàng XAUUSD)
+        market_open, market_status_msg = is_market_open(symbol_name, now_vn)
+        if not market_open:
+            print(f"[{symbol_name}] ⏸️ {market_status_msg} -> Tạm dừng quét & không bắn lệnh.")
+            if manual_force and symbol_name == "XAUUSD":
+                msg_closed = (
+                    f"⏸️ *[VÀNG Đánh BTC] - THỊ TRƯỜNG {label} ĐANG ĐÓNG CỬA*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{timeframe.upper()}`\n"
+                    f"⏰ *Hiện tại (VN):* `{now_vn.strftime('%H:%M - %A (%d/%m/%Y)')}`\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"⚠️ *Thông báo:* {market_status_msg}\n\n"
+                    "💡 _Hệ thống tạm ngưng phân tích và không bắn lệnh Vàng để bảo vệ vốn. Tín hiệu Vàng sẽ tự động kích hoạt trở lại ngay khi thị trường mở cửa!_"
+                )
+                send_telegram_message(msg_closed)
+            continue
 
         # XỬ LÝ KHUNG NẾN 1H:
         is_top_of_hour = now_vn.minute < 16
