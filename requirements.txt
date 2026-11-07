@@ -1,3 +1,7 @@
+torch
+huggingface_hub>=0.20.0
+einops>=0.7.0
+tqdm>=4.65.0
 yfinance>=0.2.30
 pandas>=2.0.0
 requests>=2.28.0
