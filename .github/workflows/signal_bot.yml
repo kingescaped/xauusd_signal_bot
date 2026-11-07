@@ -1,11 +1,11 @@
 name: VÀNG Đánh BTC Signal Bot
 
 on:
-  # Chạy tự động mỗi 15 phút (khung nến M15)
-  schedule:
-    - cron: '*/15 * * * *'
+  # Chạy tự động mỗi 15 phút (Đã đóng lại vì dùng cron-job.org gọi chuẩn xác qua API để tránh trùng lặp)
+  # schedule:
+  #   - cron: '*/15 * * * *'
   
-  # Cho phép bấm nút "Run workflow" hoặc gọi từ webhook ngoài (cron-job.org)
+  # Cho phép bấm nút "Run workflow" hoặc gọi tự động từ webhook ngoài (cron-job.org)
   workflow_dispatch:
 
 permissions:
