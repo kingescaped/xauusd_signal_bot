@@ -1,5 +1,6 @@
 torch
 huggingface_hub>=0.20.0
+safetensors>=0.4.0
 einops>=0.7.0
 tqdm>=4.65.0
 yfinance>=0.2.30
