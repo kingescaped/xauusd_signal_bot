@@ -5,7 +5,7 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   
-  # Cho phép bấm nút "Run workflow" để chạy thủ công bất cứ lúc nào trên GitHub
+  # Cho phép bấm nút "Run workflow" hoặc gọi từ webhook ngoài (cron-job.org)
   workflow_dispatch:
 
 permissions:
@@ -48,13 +48,7 @@ jobs:
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID || '-1002144845536' }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "⚡ Phát hiện bạn bấm nút 'Run workflow' -> Kích hoạt chế độ gửi ảnh biểu đồ trực quan ngay lập tức!"
-            python main.py --once --force
-          else
-            echo "🤖 Chế độ tự động chạy ngầm theo lịch -> Chỉ bắn tín hiệu khi độ tin cậy >= 70%"
-            python main.py --once
-          fi
+          python main.py --once
 
       - name: 💾 Lưu lại lịch sử tín hiệu TP/SL vào Repository
         run: |

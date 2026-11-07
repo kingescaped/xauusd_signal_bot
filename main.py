@@ -48,9 +48,9 @@ def run_single_cycle(manual_force=False):
     now_vn = datetime.now(timezone(timedelta(hours=7)))
     print(f"\n[{now_vn.strftime('%Y-%m-%d %H:%M:%S')} VN] Bắt đầu chu kỳ quét nến...")
     if manual_force:
-        print("⚡ [BẤM TAY THỦ CÔNG] Bạn vừa bấm nút 'Run workflow' -> LUÔN GỬI biểu đồ và kết quả phân tích về nhóm Telegram!")
+        print("⚡ [CHẾ ĐỘ ÉP BUỘC] Luôn gửi ảnh và phân tích kể cả khi Sideway.")
     else:
-        print("🤖 [CHẠY TỰ ĐỘNG THEO LỊCH] Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= 70%.")
+        print("🤖 [CHẠY TỰ ĐỘNG] Giữ im lặng khi Sideway/cuối tuần. Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= 70%.")
 
     # 1. Kiểm tra gửi báo cáo 6:00 sáng
     check_and_send_daily_report_if_due()
@@ -68,20 +68,10 @@ def run_single_cycle(manual_force=False):
         period = item['period']
 
         # KIỂM TRA GIỜ MỞ/ĐÓNG CỬA THỊ TRƯỜNG (Áp dụng riêng cho Vàng XAUUSD)
+        # Cuối tuần hoặc ngoài giờ giao dịch: giữ im lặng tuyệt đối, không gửi tin nhắn
         market_open, market_status_msg = is_market_open(symbol_name, now_vn)
         if not market_open:
-            print(f"[{symbol_name}] ⏸️ {market_status_msg} -> Tạm dừng quét & không bắn lệnh.")
-            if manual_force and symbol_name == "XAUUSD":
-                msg_closed = (
-                    f"⏸️ *[VÀNG Đánh BTC] - THỊ TRƯỜNG {label} ĐANG ĐÓNG CỬA*\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{timeframe.upper()}`\n"
-                    f"⏰ *Hiện tại (VN):* `{now_vn.strftime('%H:%M - %A (%d/%m/%Y)')}`\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"⚠️ *Thông báo:* {market_status_msg}\n\n"
-                    "💡 _Hệ thống tạm ngưng phân tích và không bắn lệnh Vàng để bảo vệ vốn. Tín hiệu Vàng sẽ tự động kích hoạt trở lại ngay khi thị trường mở cửa!_"
-                )
-                send_telegram_message(msg_closed)
+            print(f"[{symbol_name}] ⏸️ {market_status_msg} -> Tạm dừng quét & giữ yên lặng tuyệt đối, không gửi tin nhắn.")
             continue
 
         # XỬ LÝ KHUNG NẾN 1H:
@@ -149,31 +139,35 @@ def run_single_cycle(manual_force=False):
                 timeframe=timeframe
             )
 
-            caption = (
-                f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
-                f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
-                f"🚀 *Tín hiệu:* *{result['direction']}*\n"
-                f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ 70%)\n"
-                f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
-                f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
-                f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
-                f"💡 *{nhan_dinh_title}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
-                "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
-            )
+            if added:
+                caption = (
+                    f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
+                    f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
+                    f"🚀 *Tín hiệu:* *{result['direction']}*\n"
+                    f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ 70%)\n"
+                    f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
+                    f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
+                    f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
+                    f"💡 *{nhan_dinh_title}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
+                    "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
+                )
 
-            if os.path.exists(chart_path):
-                send_telegram_photo(chart_path, caption)
+                if os.path.exists(chart_path):
+                    send_telegram_photo(chart_path, caption)
+                else:
+                    send_telegram_message(caption)
             else:
-                send_telegram_message(caption)
+                print(f"-> {symbol_name}: {reason}")
 
         # =========================================================================
-        # TRƯỜNG HỢP 2: Khi BẠN BẤM TAY ("Run workflow") nhưng thị trường Sideway / < 70%
+        # TRƯỜNG HỢP 2: Bấm tay có cờ --force (chỉ dùng khi muốn test thủ công)
         # =========================================================================
         elif manual_force:
+            print(f"-> {symbol_name}: [Có cờ --force] Gửi ảnh phân tích Sideway.")
             caption = (
                 f"📊 *[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {label}*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
@@ -191,10 +185,11 @@ def run_single_cycle(manual_force=False):
                 send_telegram_message(caption)
 
         # =========================================================================
-        # TRƯỜNG HỢP 3: Khi chạy tự động ngầm theo lịch mà không có kèo đẹp
+        # TRƯỜNG HỢP 3: Thị trường Sideway hoặc độ tin cậy < 70% khi chạy tự động
+        # -> Giữ yên lặng tuyệt đối, KHÔNG gửi tin nhắn làm phiền nhóm
         # =========================================================================
         else:
-            print(f"-> {symbol_name}: Đang chạy ngầm, độ tin cậy {result['confidence']}% chưa đạt {config.CONFIDENCE_THRESHOLD}% hoặc Sideway -> Giữ yên lặng cho nhóm.")
+            print(f"-> {symbol_name}: Độ tin cậy {result['confidence']}% (< {config.CONFIDENCE_THRESHOLD}%) hoặc Sideway -> Giữ yên lặng tuyệt đối, không gửi tin nhắn.")
 
 def main():
     parser = argparse.ArgumentParser(description="VÀNG Đánh BTC Signal Bot")
@@ -215,9 +210,7 @@ def main():
         send_telegram_message(report_text)
         return
 
-    github_event = os.getenv("GITHUB_EVENT_NAME")
-    is_github_manual = (github_event == "workflow_dispatch")
-    is_force = args.force or is_github_manual or (github_event is None and args.once)
+    is_force = args.force
 
     if args.once:
         print(f"Chạy quét 1 chu kỳ (Single Run Mode | Chế độ ép buộc gửi tin nhắn: {is_force})...")
@@ -231,7 +224,7 @@ def main():
     print(f"   - Báo cáo định kỳ: 06:00 Sáng hàng ngày        ")
     print("==================================================")
     
-    run_single_cycle(manual_force=True)
+    run_single_cycle(manual_force=False)
     schedule.every(15).minutes.do(lambda: run_single_cycle(manual_force=False))
 
     while True:
