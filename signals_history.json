@@ -24,5 +24,18 @@
     "status": "HIT_SL",
     "closed_at": "2026-11-07 12:30:00+00:00",
     "close_price": 75949.54
+  },
+  {
+    "id": "BTCUSD_20261107_131626",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 75733.08,
+    "tp": 75434.38,
+    "sl": 75912.3,
+    "open_time": "2026-11-07 13:15:00+00:00",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
