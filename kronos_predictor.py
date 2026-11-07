@@ -5,12 +5,10 @@ import pandas as pd
 from datetime import timedelta
 import config
 
-# Đảm bảo đường dẫn import gói model
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-# Biến toàn cục để cache mô hình sau khi load lần đầu
 _GLOBAL_PREDICTOR = None
 _MODEL_LOADED = False
 
@@ -44,7 +42,7 @@ def load_kronos_base():
         return _GLOBAL_PREDICTOR
 
     except Exception as e:
-        print(f"[CẢNH BÁO AI] Không nạp được Kronos-base ({e}). Sử dụng chế độ phân tích kỹ thuật dự phòng.")
+        print(f"[CẢNH BÁO AI] Không nạp được Kronos-base ({e}). Dùng chế độ phân tích kỹ thuật dự phòng.")
         _MODEL_LOADED = False
         return None
 
@@ -57,57 +55,60 @@ def calculate_volatility(df, window=14):
     atr = tr.rolling(window).mean().iloc[-1]
     return round(float(atr), 2) if not np.isnan(atr) else 5.0
 
-def predict_future(df, symbol_name):
+def predict_future(df, symbol_name, timeframe="15m", pred_len=12):
     """
-    Phân tích & dự báo xu hướng nến M15 bằng KRONOS-BASE FOUNDATION MODEL:
-    - Tokenize chuỗi nến quá khứ.
-    - Autoregressive Transformer sinh tiếp 12 cây nến M15 tương lai.
-    - Tính toán điểm Entry, TP, SL dựa trên đường đi nến do Kronos dự báo.
+    Phân tích & dự báo xu hướng bằng KRONOS-BASE:
+    - Bitcoin: Khung M15 (dự phóng 12 nến = 3 tiếng)
+    - Vàng: Khung 1H (dự phóng 6 nến = 6 tiếng)
     """
     current_price = float(df['close'].iloc[-1])
     atr = calculate_volatility(df)
-    pred_len = getattr(config, "KRONOS_PREDICT_LEN", 12)  # Dự báo 12 nến M15 (3 tiếng)
 
     predictor = load_kronos_base()
 
     if predictor is not None:
         try:
-            print(f"[AI KRONOS] Đang chạy suy luận K-line cho {symbol_name}...")
-            # Chuẩn bị context nến cho Kronos
+            print(f"[AI KRONOS] Đang chạy suy luận K-line cho {symbol_name} ({timeframe})...")
             lookback = min(len(df), 200)
             context_df = df.tail(lookback).copy()
             
             x_timestamp = pd.to_datetime(context_df['time'])
             last_time = x_timestamp.iloc[-1]
-            y_timestamp = pd.date_range(start=last_time + timedelta(minutes=15), periods=pred_len, freq='15min')
+            
+            # Tính bước nhảy thời gian tương lai theo timeframe
+            if timeframe.lower() == "1h":
+                step_delta = timedelta(hours=1)
+                freq_str = '1h'
+            else:
+                step_delta = timedelta(minutes=15)
+                freq_str = '15min'
 
-            # Đảm bảo có đủ các cột mà Kronos yêu cầu
+            y_timestamp = pd.date_range(start=last_time + step_delta, periods=pred_len, freq=freq_str)
+
             x_df = context_df[['open', 'high', 'low', 'close', 'volume']].copy()
             if 'amount' not in x_df.columns:
                 x_df['amount'] = x_df['volume'] * x_df[['open', 'high', 'low', 'close']].mean(axis=1)
 
-            # Gọi mô hình Kronos-base dự báo nến tương lai
+            # Dự báo chuỗi K-line bằng Kronos-base
             pred_df = predictor.predict(
                 df=x_df,
                 x_timestamp=x_timestamp,
                 y_timestamp=y_timestamp,
                 pred_len=pred_len,
-                T=0.8,            # Temperature kiểm soát độ mượt
+                T=0.8,
                 top_p=0.9,
-                sample_count=3,   # Monte Carlo sampling 3 đường
+                sample_count=3,
                 verbose=False
             )
 
-            # Phân tích chuỗi nến do Kronos sinh ra
             pred_end_price = float(pred_df['close'].iloc[-1])
             pred_max_high = float(pred_df['high'].max())
             pred_min_low = float(pred_df['low'].min())
             
-            # % Thay đổi giá kỳ vọng
             pct_change = (pred_end_price - current_price) / current_price * 100
 
-            # Ngưỡng phát tín hiệu (0.1% cho Vàng, 0.25% cho BTC)
-            threshold = 0.10 if symbol_name == "XAUUSD" else 0.25
+            # Ngưỡng phát tín hiệu
+            threshold = 0.12 if timeframe == "1h" else 0.25
 
             if pct_change >= threshold:
                 direction = "🟢 BUY (TĂNG)"
@@ -125,7 +126,7 @@ def predict_future(df, symbol_name):
                 tp = current_price
                 sl = current_price
 
-            print(f"[AI KRONOS THÀNH CÔNG] {symbol_name}: {direction} | Dự phóng: {pct_change:+.2f}% | Độ tin cậy: {confidence}%")
+            print(f"[AI KRONOS THÀNH CÔNG] {symbol_name} ({timeframe}): {direction} | Dự phóng: {pct_change:+.2f}% | Độ tin cậy: {confidence}%")
 
             return {
                 "current_price": round(current_price, 2),
@@ -141,7 +142,7 @@ def predict_future(df, symbol_name):
         except Exception as e:
             print(f"[CẢNH BÁO AI] Lỗi trong quá trình suy luận Kronos: {e}")
 
-    # Fallback dự phòng nếu môi trường chưa tải được PyTorch
+    # Fallback
     ma_short = df['close'].tail(7).mean()
     ma_long = df['close'].tail(21).mean()
     momentum = current_price - df['close'].iloc[-4]

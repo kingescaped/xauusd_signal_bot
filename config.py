@@ -7,27 +7,30 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "-1002144845536")
 # Cấu hình mô hình AI Kronos chính thức từ Hugging Face
 KRONOS_MODEL_NAME = "NeoQuasar/Kronos-base"
 KRONOS_TOKENIZER_NAME = "NeoQuasar/Kronos-Tokenizer-base"
-KRONOS_PREDICT_LEN = 12   # Dự báo 12 nến tiếp theo (tương đương 3 tiếng ở khung M15)
 
-# Danh sách các cặp tài sản theo dõi
+# Danh sách cấu hình tài sản ĐA KHUNG THỜI GIAN
 SYMBOLS = [
-    {
-        "name": "XAUUSD",
-        "ticker": "GC=F",         # Vàng thế giới
-        "label": "VÀNG (XAUUSD)",
-        "unit": "$/oz"
-    },
     {
         "name": "BTCUSD",
         "ticker": "BTC-USD",      # Bitcoin
         "label": "BITCOIN (BTCUSD)",
-        "unit": "$"
+        "timeframe": "15m",       # Khung M15 cho BTC
+        "unit": "$",
+        "predict_len": 12,        # Dự báo 12 nến M15 (3 tiếng tới)
+        "period": "5d"
+    },
+    {
+        "name": "XAUUSD",
+        "ticker": "GC=F",         # Vàng thế giới
+        "label": "VÀNG (XAUUSD)",
+        "timeframe": "1h",        # Khung 1H cho Vàng (ít nhiễu, chuẩn kỹ thuật)
+        "unit": "$/oz",
+        "predict_len": 6,         # Dự báo 6 nến 1H (6 tiếng tới)
+        "period": "14d"
     }
 ]
 
-# Khung thời gian quét tín hiệu
-TIMEFRAME = "15m"      # 15 phút
-CANDLE_LIMIT = 200     # Lấy 200 nến để mô hình Kronos có đủ context phân tích
+CANDLE_LIMIT = 200     # Lấy 200 nến context cho mô hình Kronos
 
 # Ngưỡng tin cậy tối thiểu để bắn tín hiệu (70%)
 CONFIDENCE_THRESHOLD = 70.0

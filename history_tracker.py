@@ -21,9 +21,9 @@ def save_history(history):
     except Exception as e:
         print(f"[LỖI] Không lưu được file lịch sử: {e}")
 
-def add_new_signal(symbol, direction, entry_price, tp, sl, time_str):
+def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m"):
     history = load_history()
-    # Kiểm tra xem có tín hiệu mở cùng cặp trong 30 phút gần nhất không (tránh bắn lặp nến kế tiếp)
+    # Kiểm tra xem có lệnh cùng cặp đang OPEN không (tránh spam lệnh liên tục)
     for sig in reversed(history[-10:]):
         if sig['symbol'] == symbol and sig['status'] == 'OPEN':
             return False, "Đã có tín hiệu đang mở cho cặp này"
@@ -32,6 +32,7 @@ def add_new_signal(symbol, direction, entry_price, tp, sl, time_str):
     new_sig = {
         "id": signal_id,
         "symbol": symbol,
+        "timeframe": timeframe,
         "direction": direction,
         "entry_price": entry_price,
         "tp": tp,
@@ -92,11 +93,9 @@ def generate_daily_report():
     history = load_history()
     now_vn = datetime.now(timezone(timedelta(hours=7)))
     yesterday_vn = now_vn - timedelta(hours=24)
-    yesterday_str = yesterday_vn.strftime('%Y-%m-%d %H:%M')
 
     recent_signals = []
     for sig in history:
-        # Lọc tín hiệu mở trong 24 giờ qua
         try:
             sig_time = datetime.strptime(sig['open_time'][:16], '%Y-%m-%d %H:%M')
             if sig_time >= yesterday_vn.replace(tzinfo=None):
@@ -112,14 +111,14 @@ def generate_daily_report():
     decided = hit_tp + hit_sl
     win_rate = (hit_tp / decided * 100) if decided > 0 else 0.0
 
-    # Phân loại theo mã
+    # Phân loại theo mã & khung thời gian
     gold_tp = sum(1 for s in recent_signals if s['symbol'] == 'XAUUSD' and s['status'] == 'HIT_TP')
     gold_sl = sum(1 for s in recent_signals if s['symbol'] == 'XAUUSD' and s['status'] == 'HIT_SL')
     btc_tp = sum(1 for s in recent_signals if s['symbol'] == 'BTCUSD' and s['status'] == 'HIT_TP')
     btc_sl = sum(1 for s in recent_signals if s['symbol'] == 'BTCUSD' and s['status'] == 'HIT_SL')
 
     report_msg = (
-        "📊 *[KRONOS AI] - BÁO CÁO TỔNG HỢP 24H (06:00 SÁNG)*\n"
+        "📊 *[KRONOS-BASE] - BÁO CÁO HIỆU SUẤT 24H (06:00 SÁNG)*\n"
         f"📅 _Ngày báo cáo: {now_vn.strftime('%d/%m/%Y')}_\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"📈 *Tổng số tín hiệu phát:* `{total}`\n"
@@ -129,9 +128,9 @@ def generate_daily_report():
         f"🏆 *Tỷ lệ thắng (Win Rate):* *{win_rate:.1f}%*\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "*Chi tiết theo sản phẩm:*\n"
-        f"🟡 *Vàng (XAUUSD):* `{gold_tp}` TP / `{gold_sl}` SL\n"
-        f"🟠 *Bitcoin (BTCUSD):* `{btc_tp}` TP / `{btc_sl}` SL\n"
+        f"🟡 *Vàng (XAUUSD - H1):* `{gold_tp}` TP / `{gold_sl}` SL\n"
+        f"🟠 *Bitcoin (BTCUSD - M15):* `{btc_tp}` TP / `{btc_sl}` SL\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 _Hệ thống tự động reset thống kê và tiếp tục quét nến M15._"
+        "💡 _Hệ thống tự động tiếp tục quét chu kỳ mới._"
     )
     return report_msg

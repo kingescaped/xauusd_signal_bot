@@ -5,10 +5,9 @@ import mplfinance as mpf
 import pandas as pd
 import os
 
-def create_signal_chart(df, symbol_name, symbol_label, unit, predicted_direction, current_price, tp, sl, output_path="signal_chart.png"):
+def create_signal_chart(df, symbol_name, symbol_label, timeframe, unit, predicted_direction, current_price, tp, sl, output_path="signal_chart.png"):
     """
-    Vẽ biểu đồ nến 35 cây gần nhất cho Vàng hoặc Bitcoin kèm đường TP, SL,
-    xuất file ảnh để gửi vào nhóm Telegram.
+    Vẽ biểu đồ nến 35 cây gần nhất cho Vàng (1H) hoặc Bitcoin (M15) kèm đường TP, SL.
     """
     try:
         plot_df = df.tail(35).copy()
@@ -45,7 +44,8 @@ def create_signal_chart(df, symbol_name, symbol_label, unit, predicted_direction
             linewidths=1.2
         )
 
-        title = f"{symbol_label} (M15) | SIGNAL: {predicted_direction}\nCurrent: {current_price:.2f} | TP: {tp:.2f} | SL: {sl:.2f}"
+        tf_label = "M15" if timeframe.lower() == "15m" else "H1"
+        title = f"{symbol_label} ({tf_label}) | KRONOS-BASE SIGNAL: {predicted_direction}\nCurrent: {current_price:.2f} | TP: {tp:.2f} | SL: {sl:.2f}"
 
         mpf.plot(
             plot_df,
