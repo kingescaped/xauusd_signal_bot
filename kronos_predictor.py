@@ -27,6 +27,11 @@ def load_kronos_base():
         hf_token = getattr(config, "HF_TOKEN", None) or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
 
         if hf_token:
+            hf_token = str(hf_token).strip()
+            if not hf_token:
+                hf_token = None
+
+        if hf_token:
             os.environ["HF_TOKEN"] = hf_token
             os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
             try:
@@ -34,6 +39,10 @@ def load_kronos_base():
                 huggingface_hub.login(token=hf_token, add_to_git_credential=False)
             except Exception:
                 pass
+        else:
+            hf_token = None
+            os.environ.pop("HF_TOKEN", None)
+            os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
         
         print(f"[AI KRONOS] Tải Tokenizer: {tokenizer_name}")
         tokenizer = KronosTokenizer.from_pretrained(tokenizer_name, token=hf_token)

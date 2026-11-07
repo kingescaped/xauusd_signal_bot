@@ -7,9 +7,13 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "-1002144845536")
 # Cấu hình mô hình AI Kronos chính thức từ Hugging Face
 KRONOS_MODEL_NAME = "NeoQuasar/Kronos-base"
 KRONOS_TOKENIZER_NAME = "NeoQuasar/Kronos-Tokenizer-base"
-HF_TOKEN = os.getenv("HF_TOKEN")
+hf_token_val = os.getenv("HF_TOKEN", "").strip()
+HF_TOKEN = hf_token_val if hf_token_val else None
 if HF_TOKEN:
     os.environ["HF_TOKEN"] = HF_TOKEN
+else:
+    os.environ.pop("HF_TOKEN", None)
+    os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
 
 # Danh sách cấu hình tài sản ĐA KHUNG THỜI GIAN
 SYMBOLS = [
