@@ -24,7 +24,7 @@ SYMBOLS = [
         "ticker": "GC=F",         # Vàng thế giới
         "label": "VÀNG (XAUUSD)",
         "timeframe": "1h",        # Khung 1H cho Vàng (ít nhiễu, chuẩn kỹ thuật)
-        "unit": "$/oz",
+        "unit": "$",
         "predict_len": 6,         # Dự báo 6 nến 1H (6 tiếng tới)
         "period": "14d"
     }
