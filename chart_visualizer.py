@@ -45,7 +45,7 @@ def create_signal_chart(df, symbol_name, symbol_label, timeframe, unit, predicte
         )
 
         tf_label = "M15" if timeframe.lower() == "15m" else "H1"
-        title = f"{symbol_label} ({tf_label}) | KRONOS-BASE SIGNAL: {predicted_direction}\nCurrent: {current_price:.2f} | TP: {tp:.2f} | SL: {sl:.2f}"
+        title = f"{symbol_label} ({tf_label}) | LVQ Std SIGNAL: {predicted_direction}\nCurrent: {current_price:.2f} | TP: {tp:.2f} | SL: {sl:.2f}"
 
         mpf.plot(
             plot_df,

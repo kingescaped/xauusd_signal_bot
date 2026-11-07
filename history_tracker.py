@@ -118,7 +118,7 @@ def generate_daily_report():
     btc_sl = sum(1 for s in recent_signals if s['symbol'] == 'BTCUSD' and s['status'] == 'HIT_SL')
 
     report_msg = (
-        "📊 *[KRONOS-BASE] - BÁO CÁO HIỆU SUẤT 24H (06:00 SÁNG)*\n"
+        "📊 *[VÀNG Đánh BTC] - BÁO CÁO HIỆU SUẤT 24H (06:00 SÁNG)*\n"
         f"📅 _Ngày báo cáo: {now_vn.strftime('%d/%m/%Y')}_\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"📈 *Tổng số tín hiệu phát:* `{total}`\n"

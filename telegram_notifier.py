@@ -62,7 +62,7 @@ def send_telegram_photo(photo_path, caption):
 def test_telegram():
     """Hàm gửi thử nghiệm để kiểm tra kết nối tới Nhóm."""
     test_msg = (
-        "🤖 *[KRONOS BOT] - KẾT NỐI THÀNH CÔNG!*\n\n"
+        "🤖 *[VÀNG Đánh BTC] - KẾT NỐI THÀNH CÔNG!*\n\n"
         "Chào mừng bạn! Bot tín hiệu nến Vàng đã sẵn sàng hoạt động trong nhóm này.\n"
         f"📊 *Sản phẩm theo dõi:* `{config.SYMBOL}`\n"
         f"⏰ *Khung thời gian:* `{config.TIMEFRAME}`"

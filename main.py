@@ -43,8 +43,6 @@ def run_single_cycle(manual_force=False):
         period = item['period']
 
         # XỬ LÝ KHUNG NẾN 1H:
-        # Nếu chạy tự động theo lịch: chỉ quét phát tín hiệu mới khi nến 1H đóng cửa (phút 00 - 15).
-        # Nếu BẤM TAY (manual_force=True): Luôn quét và phát tín hiệu ngay lập tức!
         is_top_of_hour = now_vn.minute < 16
         if timeframe.lower() == "1h" and not is_top_of_hour and not manual_force:
             print(f"[{symbol_name} - 1H] Chưa đóng nến 1H (phút {now_vn.minute}) -> Chờ đến đầu tiếng tiếp theo.")
@@ -75,8 +73,11 @@ def run_single_cycle(manual_force=False):
 
         tf_label = "M15" if timeframe.lower() == "15m" else "H1"
         is_high_confidence = (result['confidence'] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result['direction'])
+        
+        # Tiêu đề nhận định riêng theo từng sản phẩm
+        nhan_dinh_title = "Nhận định của Vàng" if symbol_name == "XAUUSD" else "Nhận định của BTC"
 
-        # Luôn vẽ ảnh biểu đồ nến
+        # Luôn vẽ ảnh biểu đồ nến với tiêu đề LVQ Std SIGNAL
         chart_filename = f"chart_{symbol_name.lower()}.png"
         chart_path = os.path.join(os.path.dirname(__file__), chart_filename)
         create_signal_chart(
@@ -94,7 +95,6 @@ def run_single_cycle(manual_force=False):
 
         # =========================================================================
         # TRƯỜNG HỢP 1: Có kèo đẹp (Độ tin cậy >= 70% và không Sideway)
-        # -> Cả bấm tay lẫn chạy ngầm đều bắn cảnh báo vào lệnh!
         # =========================================================================
         if is_high_confidence:
             added, reason = add_new_signal(
@@ -108,18 +108,19 @@ def run_single_cycle(manual_force=False):
             )
 
             caption = (
-                f"🎯 *[KRONOS-BASE AI] - TÍN HIỆU VÀO LỆNH {label}*\n"
+                f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
                 f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
                 f"🚀 *Tín hiệu:* *{result['direction']}*\n"
-                f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn $\ge$ 70%)\n"
+                f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ 70%)\n"
                 f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
                 f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
                 f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
-                "⚠️ _Hệ thống tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
+                f"💡 *{nhan_dinh_title}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
+                "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
             )
 
             if os.path.exists(chart_path):
@@ -129,18 +130,17 @@ def run_single_cycle(manual_force=False):
 
         # =========================================================================
         # TRƯỜNG HỢP 2: Khi BẠN BẤM TAY ("Run workflow") nhưng thị trường Sideway / < 70%
-        # -> LUÔN GỬI biểu đồ kèm thông báo để bạn kiểm tra trực quan!
         # =========================================================================
         elif manual_force:
             caption = (
-                f"📊 *[KRONOS-BASE AI] - CẬP NHẬT PHÂN TÍCH {label}*\n"
+                f"📊 *[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {label}*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
                 f"💰 *Giá hiện tại:* `{result['current_price']} {unit}`\n"
                 f"🎯 *Trạng thái:* *{result['direction']}*\n"
-                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần $\ge$ 70% để vào lệnh)*\n"
+                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ 70% để vào lệnh)*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                "💡 *Nhận định AI:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!"
+                f"💡 *{nhan_dinh_title}:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!"
             )
 
             if os.path.exists(chart_path):
@@ -150,13 +150,12 @@ def run_single_cycle(manual_force=False):
 
         # =========================================================================
         # TRƯỜNG HỢP 3: Khi chạy tự động ngầm theo lịch mà không có kèo đẹp
-        # -> Không làm phiền nhóm chat
         # =========================================================================
         else:
             print(f"-> {symbol_name}: Đang chạy ngầm, độ tin cậy {result['confidence']}% chưa đạt {config.CONFIDENCE_THRESHOLD}% hoặc Sideway -> Giữ yên lặng cho nhóm.")
 
 def main():
-    parser = argparse.ArgumentParser(description="Kronos Gold (1H) & BTC (M15) Signal Bot")
+    parser = argparse.ArgumentParser(description="VÀNG Đánh BTC Signal Bot")
     parser.add_argument("--test", action="store_true", help="Kiểm tra kết nối Telegram vào nhóm")
     parser.add_argument("--report", action="store_true", help="Gửi ngay báo cáo tổng hợp 24h vào nhóm")
     parser.add_argument("--once", action="store_true", help="Chạy quét 1 chu kỳ ngay bây giờ")
@@ -174,7 +173,6 @@ def main():
         send_telegram_message(report_text)
         return
 
-    # Nhận diện: Nếu được kích hoạt thủ công từ GitHub Actions ("workflow_dispatch") hoặc có cờ --force
     github_event = os.getenv("GITHUB_EVENT_NAME")
     is_github_manual = (github_event == "workflow_dispatch")
     is_force = args.force or is_github_manual or (github_event is None and args.once)
@@ -185,7 +183,7 @@ def main():
         return
 
     print("==================================================")
-    print("   KRONOS-BASE BOT: BTC (M15) & VÀNG (1H)         ")
+    print("   [VÀNG Đánh BTC] BOT: BTC (M15) & VÀNG (1H)     ")
     print(f"   - BTCUSD: Khung M15 (quét mỗi 15 phút)         ")
     print(f"   - XAUUSD: Khung H1  (quét đầu mỗi tiếng)       ")
     print(f"   - Báo cáo định kỳ: 06:00 Sáng hàng ngày        ")
