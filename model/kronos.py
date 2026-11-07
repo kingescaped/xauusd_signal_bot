@@ -471,11 +471,26 @@ def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context
 
 def calc_time_stamps(x_timestamp):
     time_df = pd.DataFrame()
-    time_df['minute'] = x_timestamp.dt.minute
-    time_df['hour'] = x_timestamp.dt.hour
-    time_df['weekday'] = x_timestamp.dt.weekday
-    time_df['day'] = x_timestamp.dt.day
-    time_df['month'] = x_timestamp.dt.month
+    if isinstance(x_timestamp, pd.DatetimeIndex):
+        time_df['minute'] = x_timestamp.minute
+        time_df['hour'] = x_timestamp.hour
+        time_df['weekday'] = x_timestamp.weekday
+        time_df['day'] = x_timestamp.day
+        time_df['month'] = x_timestamp.month
+    elif hasattr(x_timestamp, 'dt'):
+        time_df['minute'] = x_timestamp.dt.minute
+        time_df['hour'] = x_timestamp.dt.hour
+        time_df['weekday'] = x_timestamp.dt.weekday
+        time_df['day'] = x_timestamp.dt.day
+        time_df['month'] = x_timestamp.dt.month
+    else:
+        ts = pd.to_datetime(x_timestamp)
+        dt_src = ts.dt if hasattr(ts, 'dt') else ts
+        time_df['minute'] = dt_src.minute
+        time_df['hour'] = dt_src.hour
+        time_df['weekday'] = dt_src.weekday
+        time_df['day'] = dt_src.day
+        time_df['month'] = dt_src.month
     return time_df
 
 
