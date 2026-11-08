@@ -1,8 +1,8 @@
 import os
 
 # Cấu hình Bot Telegram
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "9193848531:AAGphQqE0tP_SGxiiBMRUaZUL0umU_L14yY")
-TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "-1002144845536")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "")
 
 # Cấu hình mô hình AI Kronos chính thức từ Hugging Face
 KRONOS_MODEL_NAME = "NeoQuasar/Kronos-base"
