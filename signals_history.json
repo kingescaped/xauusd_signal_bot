@@ -47,8 +47,8 @@
     "tp": 75351.09,
     "sl": 73796.66,
     "open_time": "2026-11-08 22:00:00+00:00",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-08 23:15:00+00:00",
+    "close_price": 75351.09
   }
 ]
