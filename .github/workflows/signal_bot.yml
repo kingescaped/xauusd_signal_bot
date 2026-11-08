@@ -44,8 +44,8 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_HUB_VERBOSITY: error
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '9193848531:AAGphQqE0tP_SGxiiBMRUaZUL0umU_L14yY' }}
-          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID || '-1002144845536' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python main.py --once
