@@ -88,7 +88,7 @@ def run_single_cycle(manual_force=False):
             df_check = get_candles(ticker, timeframe="15m", period="2d", limit=5)
             if df_check is not None and len(df_check) > 0:
                 last_c = df_check.iloc[-1]
-                update_open_signals(symbol_name, float(last_c['high']), float(last_c['low']), float(last_c['close']), str(last_c['time']))
+                update_open_signals(symbol_name, float(last_c['high']), float(last_c['low']), float(last_c['close']), str(last_c['time']), df=df_check)
             continue
 
         print(f"\n--- Đang xử lý: {label} (Khung {timeframe.upper()}) ---")
@@ -104,7 +104,7 @@ def run_single_cycle(manual_force=False):
         current_close = float(latest_candle['close'])
 
         # Cập nhật xem các lệnh trước đó có chạm TP/SL không
-        update_open_signals(symbol_name, current_high, current_low, current_close, current_time_str)
+        update_open_signals(symbol_name, current_high, current_low, current_close, current_time_str, df=df)
 
         # Phân tích dự báo bằng Kronos-base
         result = predict_future(df, symbol_name, timeframe=timeframe, pred_len=pred_len)
@@ -147,6 +147,7 @@ def run_single_cycle(manual_force=False):
             )
 
             if added:
+                print(f"-> {symbol_name}: 🚀 Bắn tín hiệu vào nhóm Telegram thành công! (Mã: {reason})")
                 caption = (
                     f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
@@ -168,7 +169,7 @@ def run_single_cycle(manual_force=False):
                 else:
                     send_telegram_message(caption)
             else:
-                print(f"-> {symbol_name}: {reason}")
+                print(f"-> {symbol_name}: ⏸️ {reason}")
 
         # =========================================================================
         # TRƯỜNG HỢP 2: Bấm tay có cờ --force (chỉ dùng khi muốn test thủ công)

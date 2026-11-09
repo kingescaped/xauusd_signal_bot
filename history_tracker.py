@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
+import config
 
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "signals_history.json")
 VN_TZ = timezone(timedelta(hours=7))
@@ -65,11 +66,23 @@ def parse_signal_time_vn(sig):
 
 def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m"):
     history = load_history()
-    # Kiểm tra xem có lệnh cùng cặp đang OPEN không (tránh spam lệnh liên tục)
+    
+    # 1. Kiểm tra tránh gửi trùng tín hiệu trên cùng một cây nến (tránh lặp lại khi quét trong cùng 1 nến)
     for sig in reversed(history[-10:]):
-        if sig['symbol'] == symbol and sig['status'] == 'OPEN':
-            return False, "Đã có tín hiệu đang mở cho cặp này"
+        if sig.get('symbol') == symbol and str(sig.get('open_time')) == str(time_str):
+            return False, f"Đã có tín hiệu cho cây nến này ({time_str})"
             
+    # 2. Nếu cấu hình không cho phép nhiều lệnh cùng chạy thì chặn khi còn lệnh OPEN
+    if not getattr(config, 'ALLOW_MULTIPLE_SIGNALS', True):
+        for sig in reversed(history[-10:]):
+            if sig.get('symbol') == symbol and sig.get('status') == 'OPEN':
+                return False, "Đã có tín hiệu đang mở cho cặp này"
+
+    # Kiểm tra xem có lệnh cũ chưa đóng không để thông báo log
+    has_open = any(sig.get('symbol') == symbol and sig.get('status') == 'OPEN' for sig in history)
+    if has_open:
+        print(f"ℹ️ [{symbol}] Đang có lệnh trước đó chưa đóng, tiếp tục mở thêm tín hiệu mới...")
+
     now_vn = datetime.now(VN_TZ)
     signal_id = f"{symbol}_{now_vn.strftime('%Y%m%d_%H%M%S')}"
     new_sig = {
@@ -90,7 +103,7 @@ def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="
     save_history(history)
     return True, signal_id
 
-def update_open_signals(symbol, current_high, current_low, current_price, current_time_str):
+def update_open_signals(symbol, current_high, current_low, current_price, current_time_str, df=None):
     """Kiểm tra các tín hiệu OPEN xem đã chạm TP hay SL chưa."""
     history = load_history()
     updated = False
@@ -100,33 +113,92 @@ def update_open_signals(symbol, current_high, current_low, current_price, curren
             dir_str = sig['direction']
             tp = sig['tp']
             sl = sig['sl']
+            sig_open_time = sig.get('open_time')
             
-            if "BUY" in dir_str:
-                if current_high >= tp:
-                    sig['status'] = "HIT_TP"
-                    sig['closed_at'] = current_time_str
-                    sig['close_price'] = tp
-                    updated = True
-                    print(f"🎯 [{symbol}] Tín hiệu BUY chạm TP tại giá {tp}!")
-                elif current_low <= sl:
-                    sig['status'] = "HIT_SL"
-                    sig['closed_at'] = current_time_str
-                    sig['close_price'] = sl
-                    updated = True
-                    print(f"🛑 [{symbol}] Tín hiệu BUY dính SL tại giá {sl}!")
-            elif "SELL" in dir_str:
-                if current_low <= tp:
-                    sig['status'] = "HIT_TP"
-                    sig['closed_at'] = current_time_str
-                    sig['close_price'] = tp
-                    updated = True
-                    print(f"🎯 [{symbol}] Tín hiệu SELL chạm TP tại giá {tp}!")
-                elif current_high >= sl:
-                    sig['status'] = "HIT_SL"
-                    sig['closed_at'] = current_time_str
-                    sig['close_price'] = sl
-                    updated = True
-                    print(f"🛑 [{symbol}] Tín hiệu SELL dính SL tại giá {sl}!")
+            # Nếu có truyền DataFrame nến, kiểm tra các nến từ lúc mở lệnh tới nay
+            checked_with_df = False
+            if df is not None and not df.empty and 'high' in df.columns and 'low' in df.columns:
+                try:
+                    time_col = 'time' if 'time' in df.columns else df.columns[0]
+                    candles_to_check = []
+                    found_start = False
+                    for _, row in df.iterrows():
+                        row_t = str(row[time_col])
+                        if not found_start:
+                            if sig_open_time and (sig_open_time in row_t or row_t in str(sig_open_time)):
+                                found_start = True
+                        if found_start:
+                            candles_to_check.append(row)
+                    
+                    if candles_to_check:
+                        checked_with_df = True
+                        for row in candles_to_check:
+                            h = float(row['high'])
+                            l = float(row['low'])
+                            t_str = str(row[time_col])
+                            
+                            if "BUY" in dir_str:
+                                if h >= tp:
+                                    sig['status'] = "HIT_TP"
+                                    sig['closed_at'] = t_str
+                                    sig['close_price'] = tp
+                                    updated = True
+                                    print(f"🎯 [{symbol}] Tín hiệu BUY chạm TP tại giá {tp}! (Nến {t_str})")
+                                    break
+                                elif l <= sl:
+                                    sig['status'] = "HIT_SL"
+                                    sig['closed_at'] = t_str
+                                    sig['close_price'] = sl
+                                    updated = True
+                                    print(f"🛑 [{symbol}] Tín hiệu BUY dính SL tại giá {sl}! (Nến {t_str})")
+                                    break
+                            elif "SELL" in dir_str:
+                                if l <= tp:
+                                    sig['status'] = "HIT_TP"
+                                    sig['closed_at'] = t_str
+                                    sig['close_price'] = tp
+                                    updated = True
+                                    print(f"🎯 [{symbol}] Tín hiệu SELL chạm TP tại giá {tp}! (Nến {t_str})")
+                                    break
+                                elif h >= sl:
+                                    sig['status'] = "HIT_SL"
+                                    sig['closed_at'] = t_str
+                                    sig['close_price'] = sl
+                                    updated = True
+                                    print(f"🛑 [{symbol}] Tín hiệu SELL dính SL tại giá {sl}! (Nến {t_str})")
+                                    break
+                except Exception as e:
+                    print(f"[CẢNH BÁO] Kiểm tra nến lịch sử cho {symbol} gặp lỗi: {e}")
+                    checked_with_df = False
+
+            # Nếu không kiểm tra bằng df được hoặc chưa chạm mốc bằng df, kiểm tra nến hiện tại
+            if not checked_with_df and sig['status'] == 'OPEN':
+                if "BUY" in dir_str:
+                    if current_high >= tp:
+                        sig['status'] = "HIT_TP"
+                        sig['closed_at'] = current_time_str
+                        sig['close_price'] = tp
+                        updated = True
+                        print(f"🎯 [{symbol}] Tín hiệu BUY chạm TP tại giá {tp}!")
+                    elif current_low <= sl:
+                        sig['status'] = "HIT_SL"
+                        sig['closed_at'] = current_time_str
+                        sig['close_price'] = sl
+                        updated = True
+                        print(f"🛑 [{symbol}] Tín hiệu BUY dính SL tại giá {sl}!")
+                elif "SELL" in dir_str:
+                    if current_low <= tp:
+                        sig['status'] = "HIT_TP"
+                        sig['closed_at'] = current_time_str
+                        sig['close_price'] = tp
+                        updated = True
+                        print(f"🎯 [{symbol}] Tín hiệu SELL chạm TP tại giá {tp}!")
+                    elif current_high >= sl:
+                        sig['status'] = "HIT_SL"
+                        sig['closed_at'] = current_time_str
+                        sig['close_price'] = sl
+                        updated = True
+                        print(f"🛑 [{symbol}] Tín hiệu SELL dính SL tại giá {sl}!")
 
     if updated:
         save_history(history)

@@ -42,5 +42,10 @@ CANDLE_LIMIT = 200     # Lấy 200 nến context cho mô hình Kronos
 # Ngưỡng tin cậy tối thiểu để bắn tín hiệu (70%)
 CONFIDENCE_THRESHOLD = 70.0
 
+# Cho phép tiếp tục bắn tín hiệu mới dù đang có lệnh cùng cặp chưa đóng (OPEN)
+# True: Luôn bắn tín hiệu khi xuất hiện kèo mới (chỉ chặn gửi lặp lại trên cùng 1 cây nến)
+# False: Chặn, chỉ bắn lệnh mới khi lệnh trước đó đã chạm TP hoặc SL
+ALLOW_MULTIPLE_SIGNALS = True
+
 # Giờ gửi báo cáo tổng kết hàng ngày (Giờ Việt Nam UTC+7)
 DAILY_REPORT_HOUR_VN = 6  # 06:00 sáng
