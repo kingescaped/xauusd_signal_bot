@@ -133,5 +133,19 @@
     "status": "HIT_TP",
     "closed_at": "2026-11-09 09:15:00+00:00",
     "close_price": 74048.75
+  },
+  {
+    "id": "XAUUSD_20261109_170212",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 4106.4,
+    "tp": 4075.16,
+    "sl": 4125.14,
+    "open_time": "2026-11-09 04:00:00-05:00",
+    "open_time_vn": "2026-11-09 17:02:12",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
