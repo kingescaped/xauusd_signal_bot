@@ -50,5 +50,18 @@
     "status": "HIT_TP",
     "closed_at": "2026-11-08 23:15:00+00:00",
     "close_price": 75351.09
+  },
+  {
+    "id": "BTCUSD_20261109_000156",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 74559.36,
+    "tp": 75490.74,
+    "sl": 74000.53,
+    "open_time": "2026-11-09 00:00:00+00:00",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
