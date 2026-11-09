@@ -63,9 +63,13 @@ def test_telegram():
     """Hàm gửi thử nghiệm để kiểm tra kết nối tới Nhóm."""
     test_msg = (
         "🤖 *[VÀNG Đánh BTC] - KẾT NỐI THÀNH CÔNG!*\n\n"
-        "Chào mừng bạn! Bot tín hiệu nến Vàng đã sẵn sàng hoạt động trong nhóm này.\n"
-        f"📊 *Sản phẩm theo dõi:* `{config.SYMBOL}`\n"
-        f"⏰ *Khung thời gian:* `{config.TIMEFRAME}`"
+        "Chào mừng bạn! Hệ thống bot tín hiệu AI Kronos đã kết nối thành công với nhóm Telegram này.\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📊 *Sản phẩm theo dõi:*\n"
+        "🟡 *Vàng (XAUUSD):* Khung H1 (1 Giờ)\n"
+        "🟠 *Bitcoin (BTCUSD):* Khung M15 (15 Phút)\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⏰ *Lịch báo cáo:* 06:00 Sáng hàng ngày & Thứ Bảy hàng tuần."
     )
     return send_telegram_message(test_msg)
 
