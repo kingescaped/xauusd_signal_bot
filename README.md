@@ -24,8 +24,9 @@ Dự án ứng dụng mô hình nền tảng AI tài chính chính thức **Kron
    * Vàng được phân tích vào đầu mỗi tiếng (ngay sau khi nến 1H đóng cửa).
 2. **Biểu đồ nến trực quan:** Tự động vẽ nến kèm các mốc **Entry**, **TP (Xanh)** và **SL (Đỏ)** gửi vào Telegram.
 3. **Theo dõi TP/SL tự động:** Lưu lại lịch sử tín hiệu vào `signals_history.json`. Mỗi cây nến mới sẽ kiểm tra xem các lệnh trước đó đã chạm TP hay dính SL chưa.
-4. **Báo cáo tổng kết 06:00 Sáng hàng ngày:** Thống kê tổng số lệnh, số lệnh TP, số lệnh SL, tỷ lệ thắng (Win Rate %) trong 24 giờ qua và gửi về nhóm Telegram.
-5. **Chạy hoàn toàn 0đ trên GitHub Actions:** Có cơ chế cache trọng số mô hình giúp chạy cực nhanh (~20 giây mỗi lần).
+4. **Báo cáo hiệu suất ngày (06:00 Sáng hàng ngày):** Tổng kết toàn bộ tín hiệu của ngày hôm trước (từ 00:00 đến 23:59), thống kê số lệnh TP/SL và tỷ lệ thắng Win Rate chuẩn xác.
+5. **Báo cáo tổng kết tuần (06:00 Sáng Thứ Bảy):** Tổng hợp hiệu suất giao dịch cả tuần (từ Thứ Hai đến Thứ Sáu), thống kê tỷ lệ thắng tổng thể và chi tiết riêng cho Vàng & Bitcoin.
+6. **Chạy hoàn toàn 0đ trên GitHub Actions:** Có cơ chế cache trọng số mô hình giúp chạy cực nhanh (~20 giây mỗi lần).
 
 ---
 

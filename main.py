@@ -7,7 +7,7 @@ import config
 from fetch_data import get_candles
 from kronos_predictor import predict_future
 from chart_visualizer import create_signal_chart
-from history_tracker import add_new_signal, update_open_signals, generate_daily_report
+from history_tracker import add_new_signal, update_open_signals, generate_daily_report, generate_weekly_report
 from telegram_notifier import send_telegram_photo, send_telegram_message, test_telegram
 
 def is_market_open(symbol_name, now_vn):
@@ -36,13 +36,20 @@ def is_market_open(symbol_name, now_vn):
     return True, "Thị trường Vàng đang mở cửa giao dịch bình thường"
 
 def check_and_send_daily_report_if_due():
-    """Kiểm tra nếu đang trong khoảng 06:00 - 06:15 sáng (giờ VN) thì gửi báo cáo 24h."""
+    """Kiểm tra nếu đang trong khoảng 06:00 - 06:15 sáng (giờ VN) thì gửi báo cáo."""
     now_vn = datetime.now(timezone(timedelta(hours=7)))
     if now_vn.hour == config.DAILY_REPORT_HOUR_VN and now_vn.minute < 16:
-        print(f"[{now_vn.strftime('%H:%M:%S')}] Đến 6:00 sáng VN -> Đang tổng hợp báo cáo 24h...")
-        report_text = generate_daily_report()
-        send_telegram_message(report_text)
-        print("Đã gửi báo cáo tổng kết 24h vào nhóm!")
+        print(f"[{now_vn.strftime('%H:%M:%S')}] Đến 6:00 sáng VN -> Đang tổng hợp báo cáo ngày hôm qua...")
+        daily_text = generate_daily_report()
+        send_telegram_message(daily_text)
+        print("Đã gửi báo cáo ngày hôm qua vào nhóm!")
+
+        # Nếu là sáng Thứ Bảy (weekday == 5) -> Gửi thêm báo cáo tổng kết tuần
+        if now_vn.weekday() == 5:
+            print(f"[{now_vn.strftime('%H:%M:%S')}] Sáng Thứ Bảy -> Đang tổng hợp báo cáo tổng kết tuần...")
+            weekly_text = generate_weekly_report()
+            send_telegram_message(weekly_text)
+            print("Đã gửi báo cáo tổng kết tuần vào nhóm!")
 
 def run_single_cycle(manual_force=False):
     now_vn = datetime.now(timezone(timedelta(hours=7)))
@@ -194,7 +201,8 @@ def run_single_cycle(manual_force=False):
 def main():
     parser = argparse.ArgumentParser(description="VÀNG Đánh BTC Signal Bot")
     parser.add_argument("--test", action="store_true", help="Kiểm tra kết nối Telegram vào nhóm")
-    parser.add_argument("--report", action="store_true", help="Gửi ngay báo cáo tổng hợp 24h vào nhóm")
+    parser.add_argument("--report", action="store_true", help="Gửi ngay báo cáo hiệu suất ngày hôm qua vào nhóm")
+    parser.add_argument("--report-week", action="store_true", help="Gửi ngay báo cáo tổng kết tuần (Thứ 2 - Thứ 6) vào nhóm")
     parser.add_argument("--once", action="store_true", help="Chạy quét 1 chu kỳ ngay bây giờ")
     parser.add_argument("--force", action="store_true", help="Ép buộc gửi ảnh biểu đồ kể cả lúc Sideway (cho chế độ bấm tay)")
     args = parser.parse_args()
@@ -205,8 +213,14 @@ def main():
         return
 
     if args.report:
-        print("Đang gửi báo cáo hiệu suất 24h...")
+        print("Đang gửi báo cáo hiệu suất ngày hôm qua...")
         report_text = generate_daily_report()
+        send_telegram_message(report_text)
+        return
+
+    if args.report_week:
+        print("Đang gửi báo cáo tổng kết tuần...")
+        report_text = generate_weekly_report()
         send_telegram_message(report_text)
         return
 

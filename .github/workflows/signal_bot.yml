@@ -7,6 +7,18 @@ on:
   
   # Cho phép bấm nút "Run workflow" hoặc gọi tự động từ webhook ngoài (cron-job.org)
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Chọn chế độ chạy:'
+        required: true
+        default: 'once'
+        type: choice
+        options:
+          - 'once'        # Quét nến bình thường (mặc định)
+          - 'report'      # Gửi ngay Báo cáo ngày hôm qua
+          - 'report-week' # Gửi ngay Báo cáo tổng kết tuần
+          - 'force'       # Ép buộc gửi ảnh biểu đồ kể cả lúc Sideway
+          - 'test'        # Thử nghiệm kết nối Telegram
 
 permissions:
   contents: write
@@ -39,7 +51,7 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
 
-      - name: 🚀 Chạy mô hình KRONOS-BASE phân tích nến (BTC M15 & Vàng 1H)
+      - name: 🚀 Chạy bot theo chế độ được chọn
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -48,7 +60,23 @@ jobs:
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          python main.py --once
+          ACTION="${{ github.event.inputs.action }}"
+          if [ "$ACTION" = "report" ]; then
+            echo "📊 Chạy báo cáo hiệu suất ngày hôm qua..."
+            python main.py --report
+          elif [ "$ACTION" = "report-week" ]; then
+            echo "🏆 Chạy báo cáo tổng kết tuần..."
+            python main.py --report-week
+          elif [ "$ACTION" = "force" ]; then
+            echo "⚡ Ép buộc gửi ảnh biểu đồ phân tích..."
+            python main.py --once --force
+          elif [ "$ACTION" = "test" ]; then
+            echo "🔔 Kiểm tra bot Telegram..."
+            python main.py --test
+          else
+            echo "🤖 Chế độ quét nến tự động..."
+            python main.py --once
+          fi
 
       - name: 💾 Lưu lại lịch sử tín hiệu TP/SL vào Repository
         run: |
