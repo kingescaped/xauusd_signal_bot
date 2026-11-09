@@ -144,9 +144,9 @@
     "sl": 4125.14,
     "open_time": "2026-11-09 04:00:00-05:00",
     "open_time_vn": "2026-11-09 17:02:12",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-09 07:00:00-05:00",
+    "close_price": 4125.14
   },
   {
     "id": "BTCUSD_20261109_171645",
