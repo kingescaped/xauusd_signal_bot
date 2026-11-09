@@ -284,8 +284,8 @@
     "sl": 4133.11,
     "open_time": "2026-11-09 11:00:00-05:00",
     "open_time_vn": "2026-11-10 00:02:23",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-09 11:00:00-05:00",
+    "close_price": 4133.11
   }
 ]
