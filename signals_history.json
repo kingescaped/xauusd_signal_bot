@@ -508,8 +508,8 @@
     "sl": 74564.9,
     "open_time": "2026-11-10 03:45:00+00:00",
     "open_time_vn": "2026-11-10 10:46:24",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-10 04:00:00+00:00",
+    "close_price": 74564.9
   }
 ]
