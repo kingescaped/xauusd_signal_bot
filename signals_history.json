@@ -788,9 +788,9 @@
     "sl": 72632.06,
     "open_time": "2026-11-10 16:30:00+00:00",
     "open_time_vn": "2026-11-10 23:31:55",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-10 20:15:00+00:00",
+    "close_price": 73654.9
   },
   {
     "id": "BTCUSD_20261110_234650",
