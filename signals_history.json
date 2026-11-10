@@ -931,5 +931,19 @@
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
+  },
+  {
+    "id": "BTCUSD_20261111_043135",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 73892.83,
+    "tp": 73582.49,
+    "sl": 74084.66,
+    "open_time": "2026-11-10 21:30:00+00:00",
+    "open_time_vn": "2026-11-11 04:31:35",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
