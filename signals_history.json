@@ -536,9 +536,9 @@
     "sl": 74850.36,
     "open_time": "2026-11-10 06:00:00+00:00",
     "open_time_vn": "2026-11-10 13:02:37",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-10 07:45:00+00:00",
+    "close_price": 74850.36
   },
   {
     "id": "BTCUSD_20261110_143147",
