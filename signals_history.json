@@ -875,5 +875,19 @@
     "status": "HIT_TP",
     "closed_at": "2026-11-10 18:30:00+00:00",
     "close_price": 73513.77
+  },
+  {
+    "id": "XAUUSD_20261111_020220",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 4035.3,
+    "tp": 4059.52,
+    "sl": 4016.03,
+    "open_time": "2026-11-10 13:00:00-05:00",
+    "open_time_vn": "2026-11-11 02:02:20",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
