@@ -886,9 +886,9 @@
     "sl": 4016.03,
     "open_time": "2026-11-10 13:00:00-05:00",
     "open_time_vn": "2026-11-11 02:02:20",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-10 20:00:00-05:00",
+    "close_price": 4059.52
   },
   {
     "id": "BTCUSD_20261111_024646",
@@ -956,9 +956,9 @@
     "sl": 4058.86,
     "open_time": "2026-11-10 16:00:00-05:00",
     "open_time_vn": "2026-11-11 06:02:09",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-10 20:00:00-05:00",
+    "close_price": 4058.86
   },
   {
     "id": "XAUUSD_20261111_070217",
@@ -984,6 +984,20 @@
     "sl": 4056.68,
     "open_time": "2026-11-10 19:00:00-05:00",
     "open_time_vn": "2026-11-11 08:02:02",
+    "status": "HIT_SL",
+    "closed_at": "2026-11-10 20:00:00-05:00",
+    "close_price": 4056.68
+  },
+  {
+    "id": "XAUUSD_20261111_090210",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 4052.8,
+    "tp": 4026.62,
+    "sl": 4070.19,
+    "open_time": "2026-11-10 20:00:00-05:00",
+    "open_time_vn": "2026-11-11 09:02:10",
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
