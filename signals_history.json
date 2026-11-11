@@ -1446,9 +1446,9 @@
     "sl": 74084.87,
     "open_time": "2026-11-11 17:30:00+00:00",
     "open_time_vn": "2026-11-12 00:31:46",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-11 21:30:00+00:00",
+    "close_price": 74715.95
   },
   {
     "id": "XAUUSD_20261112_020212",
