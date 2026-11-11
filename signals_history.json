@@ -1057,5 +1057,19 @@
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
+  },
+  {
+    "id": "XAUUSD_20261111_120227",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 4053.5,
+    "tp": 4037.57,
+    "sl": 4068.91,
+    "open_time": "2026-11-10 23:00:00-05:00",
+    "open_time_vn": "2026-11-11 12:02:27",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
