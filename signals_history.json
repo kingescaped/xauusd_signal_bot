@@ -1558,9 +1558,9 @@
     "sl": 4014.32,
     "open_time": "2026-11-11 16:00:00-05:00",
     "open_time_vn": "2026-11-12 06:02:16",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-12 02:30:00-05:00",
+    "close_price": 3960.94
   },
   {
     "id": "BTCUSD_20261112_063149",
@@ -1698,9 +1698,9 @@
     "sl": 4003.23,
     "open_time": "2026-11-11 21:00:00-05:00",
     "open_time_vn": "2026-11-12 10:01:54",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-12 02:30:00-05:00",
+    "close_price": 3961.81
   },
   {
     "id": "BTCUSD_20261112_101623",
@@ -1726,9 +1726,9 @@
     "sl": 4004.65,
     "open_time": "2026-11-11 22:00:00-05:00",
     "open_time_vn": "2026-11-12 11:02:04",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-12 02:30:00-05:00",
+    "close_price": 3962.91
   },
   {
     "id": "BTCUSD_20261112_111617",
