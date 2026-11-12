@@ -2314,9 +2314,9 @@
     "sl": 71295.06,
     "open_time": "2026-11-12 19:00:00+00:00",
     "open_time_vn": "2026-11-13 02:01:59",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-12 21:00:00+00:00",
+    "close_price": 71295.06
   },
   {
     "id": "BTCUSD_20261113_023157",
@@ -2384,6 +2384,20 @@
     "sl": 71238.4,
     "open_time": "2026-11-12 20:45:00+00:00",
     "open_time_vn": "2026-11-13 03:46:39",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
+  },
+  {
+    "id": "BTCUSD_20261113_041631",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 71455.15,
+    "tp": 71824.92,
+    "sl": 71233.28,
+    "open_time": "2026-11-12 21:15:00+00:00",
+    "open_time_vn": "2026-11-13 04:16:31",
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
