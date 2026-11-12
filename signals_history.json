@@ -2261,5 +2261,19 @@
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
+  },
+  {
+    "id": "BTCUSD_20261113_011643",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 71859.2,
+    "tp": 72389.73,
+    "sl": 71540.88,
+    "open_time": "2026-11-12 18:15:00+00:00",
+    "open_time_vn": "2026-11-13 01:16:43",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
