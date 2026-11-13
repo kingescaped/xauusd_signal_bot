@@ -2090,9 +2090,9 @@
     "sl": 71036.16,
     "open_time": "2026-11-12 14:45:00+00:00",
     "open_time_vn": "2026-11-12 21:46:48",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 71036.16
   },
   {
     "id": "BTCUSD_20261112_220207",
@@ -2104,9 +2104,9 @@
     "sl": 70712.98,
     "open_time": "2026-11-12 15:00:00+00:00",
     "open_time_vn": "2026-11-12 22:02:07",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70712.98
   },
   {
     "id": "BTCUSD_20261112_221639",
@@ -2118,9 +2118,9 @@
     "sl": 70682.17,
     "open_time": "2026-11-12 15:15:00+00:00",
     "open_time_vn": "2026-11-12 22:16:39",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70682.17
   },
   {
     "id": "BTCUSD_20261112_223149",
@@ -2132,9 +2132,9 @@
     "sl": 70867.23,
     "open_time": "2026-11-12 15:30:00+00:00",
     "open_time_vn": "2026-11-12 22:31:49",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70867.23
   },
   {
     "id": "BTCUSD_20261112_224618",
@@ -2146,9 +2146,9 @@
     "sl": 70708.44,
     "open_time": "2026-11-12 15:45:00+00:00",
     "open_time_vn": "2026-11-12 22:46:18",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70708.44
   },
   {
     "id": "BTCUSD_20261112_230212",
@@ -2160,9 +2160,9 @@
     "sl": 70980.64,
     "open_time": "2026-11-12 16:00:00+00:00",
     "open_time_vn": "2026-11-12 23:02:12",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70980.64
   },
   {
     "id": "XAUUSD_20261112_230220",
@@ -2412,9 +2412,9 @@
     "sl": 70988.15,
     "open_time": "2026-11-12 22:15:00+00:00",
     "open_time_vn": "2026-11-13 05:16:35",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:45:00+00:00",
+    "close_price": 70988.15
   },
   {
     "id": "BTCUSD_20261113_053157",
@@ -2468,9 +2468,9 @@
     "sl": 71029.06,
     "open_time": "2026-11-13 00:15:00+00:00",
     "open_time_vn": "2026-11-13 07:16:43",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 71029.06
   },
   {
     "id": "BTCUSD_20261113_073202",
@@ -2482,6 +2482,20 @@
     "sl": 70884.01,
     "open_time": "2026-11-13 00:30:00+00:00",
     "open_time_vn": "2026-11-13 07:32:02",
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 00:30:00+00:00",
+    "close_price": 70884.01
+  },
+  {
+    "id": "BTCUSD_20261113_074639",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 70933.44,
+    "tp": 71432.54,
+    "sl": 70633.98,
+    "open_time": "2026-11-13 00:45:00+00:00",
+    "open_time_vn": "2026-11-13 07:46:39",
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
