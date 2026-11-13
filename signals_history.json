@@ -3532,8 +3532,8 @@
     "sl": 68204.87,
     "open_time": "2026-11-13 22:15:00+00:00",
     "open_time_vn": "2026-11-14 05:16:46",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 22:15:00+00:00",
+    "close_price": 68204.87
   }
 ]
