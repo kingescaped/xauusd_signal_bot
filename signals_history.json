@@ -2804,9 +2804,9 @@
     "sl": 67141.73,
     "open_time": "2026-11-13 06:00:00+00:00",
     "open_time_vn": "2026-11-13 13:02:11",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 11:15:00+00:00",
+    "close_price": 69427.28
   },
   {
     "id": "XAUUSD_20261113_130219",
@@ -2986,9 +2986,9 @@
     "sl": 69479.16,
     "open_time": "2026-11-13 10:15:00+00:00",
     "open_time_vn": "2026-11-13 17:16:23",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-13 11:15:00+00:00",
+    "close_price": 69479.16
   },
   {
     "id": "BTCUSD_20261113_174623",
