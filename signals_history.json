@@ -3322,9 +3322,9 @@
     "sl": 69271.37,
     "open_time": "2026-11-13 17:45:00+00:00",
     "open_time_vn": "2026-11-14 00:47:18",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 21:00:00+00:00",
+    "close_price": 68515.17
   },
   {
     "id": "BTCUSD_20261114_010215",
@@ -3350,9 +3350,9 @@
     "sl": 69135.77,
     "open_time": "2026-11-13 18:15:00+00:00",
     "open_time_vn": "2026-11-14 01:16:37",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 21:00:00+00:00",
+    "close_price": 68497.8
   },
   {
     "id": "BTCUSD_20261114_013153",
@@ -3364,9 +3364,9 @@
     "sl": 69209.58,
     "open_time": "2026-11-13 18:30:00+00:00",
     "open_time_vn": "2026-11-14 01:31:53",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 21:00:00+00:00",
+    "close_price": 68568.4
   },
   {
     "id": "BTCUSD_20261114_014638",
@@ -3406,9 +3406,9 @@
     "sl": 69257.82,
     "open_time": "2026-11-13 19:15:00+00:00",
     "open_time_vn": "2026-11-14 02:16:33",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 21:00:00+00:00",
+    "close_price": 68513.21
   },
   {
     "id": "BTCUSD_20261114_023156",
@@ -3420,9 +3420,9 @@
     "sl": 69186.88,
     "open_time": "2026-11-13 19:30:00+00:00",
     "open_time_vn": "2026-11-14 02:31:56",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 21:00:00+00:00",
+    "close_price": 68525.27
   },
   {
     "id": "BTCUSD_20261114_030208",
@@ -3490,6 +3490,20 @@
     "sl": 3865.25,
     "open_time": "2026-11-13 15:00:00-05:00",
     "open_time_vn": "2026-11-14 04:02:14",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
+  },
+  {
+    "id": "BTCUSD_20261114_041625",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 68463.29,
+    "tp": 68078.98,
+    "sl": 68693.88,
+    "open_time": "2026-11-13 21:15:00+00:00",
+    "open_time_vn": "2026-11-14 04:16:25",
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
