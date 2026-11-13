@@ -3003,5 +3003,19 @@
     "status": "OPEN",
     "closed_at": null,
     "close_price": null
+  },
+  {
+    "id": "XAUUSD_20261113_180222",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 3895.6,
+    "tp": 3908.97,
+    "sl": 3880.88,
+    "open_time": "2026-11-13 05:00:00-05:00",
+    "open_time_vn": "2026-11-13 18:02:22",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null
   }
 ]
