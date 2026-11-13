@@ -3182,9 +3182,9 @@
     "sl": 69628.19,
     "open_time": "2026-11-13 14:15:00+00:00",
     "open_time_vn": "2026-11-13 21:16:39",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_TP",
+    "closed_at": "2026-11-13 15:15:00+00:00",
+    "close_price": 68561.09
   },
   {
     "id": "BTCUSD_20261113_213146",
