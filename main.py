@@ -57,7 +57,7 @@ def run_single_cycle(manual_force=False):
     if manual_force:
         print("⚡ [CHẾ ĐỘ ÉP BUỘC] Luôn gửi ảnh và phân tích kể cả khi Sideway.")
     else:
-        print("🤖 [CHẠY TỰ ĐỘNG] Giữ im lặng khi Sideway/cuối tuần. Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= 70%.")
+        print(f"🤖 [CHẠY TỰ ĐỘNG] Giữ im lặng khi Sideway/cuối tuần. Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= {config.CONFIDENCE_THRESHOLD}%.")
 
     # 1. Kiểm tra gửi báo cáo 6:00 sáng
     check_and_send_daily_report_if_due()
@@ -143,23 +143,25 @@ def run_single_cycle(manual_force=False):
                 tp=result['tp'],
                 sl=result['sl'],
                 time_str=current_time_str,
-                timeframe=timeframe
+                timeframe=timeframe,
+                atr=result.get('atr', 1.0)
             )
 
             if added:
                 print(f"-> {symbol_name}: 🚀 Bắn tín hiệu vào nhóm Telegram thành công! (Mã: {reason})")
+                adx_info = f" | *ADX:* `{result.get('adx', 0):.1f}`" if 'adx' in result else ""
                 caption = (
                     f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
                     f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
                     f"🚀 *Tín hiệu:* *{result['direction']}*\n"
-                    f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ 70%)\n"
+                    f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%)\n"
                     f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
                     f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
-                    f"⚡ *Biến động ATR:* `{result['atr']}`\n\n"
+                    f"⚡ *Biến động ATR:* `{result['atr']}`{adx_info}\n\n"
                     f"💡 *{nhan_dinh_title}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
                     "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
                 )
@@ -182,7 +184,7 @@ def run_single_cycle(manual_force=False):
                 f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
                 f"💰 *Giá hiện tại:* `{result['current_price']} {unit}`\n"
                 f"🎯 *Trạng thái:* *{result['direction']}*\n"
-                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ 70% để vào lệnh)*\n"
+                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ {config.CONFIDENCE_THRESHOLD}% để vào lệnh)*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"💡 *{nhan_dinh_title}:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!"
             )

@@ -64,26 +64,48 @@ def parse_signal_time_vn(sig):
 
     return None
 
-def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m"):
+def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m", atr=None):
     history = load_history()
     
-    # 1. Kiểm tra tránh gửi trùng tín hiệu trên cùng một cây nến (tránh lặp lại khi quét trong cùng 1 nến)
+    # 1. Kiểm tra tránh gửi trùng tín hiệu trên cùng một cây nến
     for sig in reversed(history[-10:]):
         if sig.get('symbol') == symbol and str(sig.get('open_time')) == str(time_str):
             return False, f"Đã có tín hiệu cho cây nến này ({time_str})"
             
-    # 2. Nếu cấu hình không cho phép nhiều lệnh cùng chạy thì chặn khi còn lệnh OPEN
-    if not getattr(config, 'ALLOW_MULTIPLE_SIGNALS', True):
-        for sig in reversed(history[-10:]):
-            if sig.get('symbol') == symbol and sig.get('status') == 'OPEN':
-                return False, "Đã có tín hiệu đang mở cho cặp này"
+    # Lấy danh sách các lệnh đang OPEN của mã này
+    open_signals = [sig for sig in history if sig.get('symbol') == symbol and sig.get('status') == 'OPEN']
+    max_open = getattr(config, 'MAX_OPEN_SIGNALS_PER_SYMBOL', 2)
+    min_dist_atr = getattr(config, 'MIN_ENTRY_DISTANCE_ATR', 0.8)
+    atr_val = float(atr) if (atr is not None and atr > 0) else 10.0
 
-    # Kiểm tra xem có lệnh cũ chưa đóng không để thông báo log
-    has_open = any(sig.get('symbol') == symbol and sig.get('status') == 'OPEN' for sig in history)
-    if has_open:
-        print(f"ℹ️ [{symbol}] Đang có lệnh trước đó chưa đóng, tiếp tục mở thêm tín hiệu mới...")
+    # 2. Nếu đã có đủ số lệnh tối đa (mặc định 2 lệnh riêng biệt) -> Chặn hoàn toàn, không nhồi lệnh thứ 3
+    if len(open_signals) >= max_open:
+        return False, f"Đã đạt tối đa {max_open} lệnh đang mở cho cặp {symbol}. Chờ chốt TP/SL mới mở tiếp."
+
+    # 3. Nếu đang có 1 lệnh OPEN -> Chỉ cho phép mở lệnh thứ 2 riêng biệt nếu điểm Entry tối ưu hơn rõ rệt
+    if len(open_signals) == 1:
+        first_sig = open_signals[0]
+        first_entry = float(first_sig.get('entry_price', entry_price))
+        first_dir = first_sig.get('direction', '')
+
+        # Cùng chiều BUY: Entry mới phải thấp hơn Entry cũ ít nhất min_dist_atr * ATR
+        if "BUY" in first_dir and "BUY" in direction:
+            required_price = first_entry - (atr_val * min_dist_atr)
+            if entry_price > required_price:
+                return False, f"Đang có 1 lệnh BUY ({first_entry}). Entry mới ({entry_price}) chưa tối ưu hơn mức yêu cầu (cần <= {required_price:.2f})."
+            else:
+                print(f"🎯 [{symbol}] Điểm Entry mới ({entry_price}) tối ưu hơn lệnh 1 ({first_entry}) -> Mở lệnh thứ 2 riêng biệt!")
+
+        # Cùng chiều SELL: Entry mới phải cao hơn Entry cũ ít nhất min_dist_atr * ATR
+        elif "SELL" in first_dir and "SELL" in direction:
+            required_price = first_entry + (atr_val * min_dist_atr)
+            if entry_price < required_price:
+                return False, f"Đang có 1 lệnh SELL ({first_entry}). Entry mới ({entry_price}) chưa tối ưu hơn mức yêu cầu (cần >= {required_price:.2f})."
+            else:
+                print(f"🎯 [{symbol}] Điểm Entry mới ({entry_price}) tối ưu hơn lệnh 1 ({first_entry}) -> Mở lệnh thứ 2 riêng biệt!")
 
     now_vn = datetime.now(VN_TZ)
+    order_num = len(open_signals) + 1
     signal_id = f"{symbol}_{now_vn.strftime('%Y%m%d_%H%M%S')}"
     new_sig = {
         "id": signal_id,
@@ -95,9 +117,10 @@ def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="
         "sl": sl,
         "open_time": time_str,
         "open_time_vn": now_vn.strftime('%Y-%m-%d %H:%M:%S'),
-        "status": "OPEN",  # OPEN, HIT_TP, HIT_SL
+        "status": "OPEN",  # OPEN, HIT_TP, HIT_SL (giữ nguyên cho tới khi chạm TP hoặc SL, không tự cắt khi hết hạn)
         "closed_at": None,
-        "close_price": None
+        "close_price": None,
+        "order_num": order_num
     }
     history.append(new_sig)
     save_history(history)
