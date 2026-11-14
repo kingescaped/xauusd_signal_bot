@@ -3714,8 +3714,8 @@
     "sl": 66940.95,
     "open_time": "2026-11-14 04:15:00+00:00",
     "open_time_vn": "2026-11-14 11:16:27",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null
+    "status": "HIT_SL",
+    "closed_at": "2026-11-14 04:15:00+00:00",
+    "close_price": 66940.95
   }
 ]
