@@ -3950,5 +3950,20 @@
     "closed_at": "2026-11-21 11:30:00+00:00",
     "close_price": 58448.17,
     "order_num": 1
+  },
+  {
+    "id": "BTCUSD_20261121_214635",
+    "symbol": "BTCUSD",
+    "timeframe": "15m",
+    "direction": "🟢 BUY (TĂNG)",
+    "entry_price": 60280.11,
+    "tp": 61326.48,
+    "sl": 59551.59,
+    "open_time": "2026-11-21 14:45:00+00:00",
+    "open_time_vn": "2026-11-21 21:46:35",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null,
+    "order_num": 1
   }
 ]
