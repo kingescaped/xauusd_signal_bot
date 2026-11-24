@@ -4066,9 +4066,9 @@
     "sl": 60901.89,
     "open_time": "2026-11-24 04:15:00+00:00",
     "open_time_vn": "2026-11-24 11:16:26",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null,
+    "status": "HIT_TP",
+    "closed_at": "2026-11-24 10:45:00+00:00",
+    "close_price": 59382.88,
     "order_num": 1
   }
 ]
