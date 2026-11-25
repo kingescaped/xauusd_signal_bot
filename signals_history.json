@@ -4130,5 +4130,20 @@
     "closed_at": "2026-11-25 17:15:00+00:00",
     "close_price": 59360.79,
     "order_num": 1
+  },
+  {
+    "id": "XAUUSD_20261126_010201",
+    "symbol": "XAUUSD",
+    "timeframe": "1h",
+    "direction": "🔴 SELL (GIẢM)",
+    "entry_price": 3539.0,
+    "tp": 3479.35,
+    "sl": 3588.71,
+    "open_time": "2026-11-25 12:00:00-05:00",
+    "open_time_vn": "2026-11-26 01:02:01",
+    "status": "OPEN",
+    "closed_at": null,
+    "close_price": null,
+    "order_num": 1
   }
 ]
