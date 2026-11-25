@@ -4096,9 +4096,9 @@
     "sl": 3550.27,
     "open_time": "2026-11-25 02:00:00-05:00",
     "open_time_vn": "2026-11-25 15:02:02",
-    "status": "OPEN",
-    "closed_at": null,
-    "close_price": null,
+    "status": "HIT_SL",
+    "closed_at": "2026-11-25 03:30:00-05:00",
+    "close_price": 3550.27,
     "order_num": 1
   }
 ]
