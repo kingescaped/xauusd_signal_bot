@@ -3,9 +3,23 @@ import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 import config
+from market_time import VN_TZ, to_utc_datetime
+from report_builder import build_daily_report, build_weekly_report
 
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "signals_history.json")
-VN_TZ = timezone(timedelta(hours=7))
+
+_METADATA_KEYS = (
+    "confidence", "pct_change", "pred_end_price", "pred_high", "pred_low",
+    "ref_close", "atr", "adx", "ema_50", "ema_200",
+    "sample_agreement", "sample_std_pct", "forecast_window_vn", "strategy_version",
+)
+
+
+def _symbol_digits_and_atr(symbol):
+    for item in getattr(config, "SYMBOLS", []):
+        if item.get("name") == symbol:
+            return int(item.get("digits", 2)), float(item.get("atr_fallback", 10.0))
+    return 2, (5.0 if symbol == "XAUUSD" else 150.0)
 
 
 def load_history():
@@ -40,6 +54,27 @@ def save_history(history):
         raise
 
 
+def remove_signal(signal_id):
+    if not signal_id:
+        return False
+    history = load_history()
+    filtered = [s for s in history if s.get("id") != signal_id]
+    if len(filtered) == len(history):
+        return False
+    save_history(filtered)
+    return True
+
+
+def has_open_signals(symbol, recent_minutes=None, now_utc=None):
+    history = load_history()
+    open_items = [s for s in history if s.get("symbol") == symbol and s.get("status") == "OPEN"]
+    if not open_items or recent_minutes is None:
+        return bool(open_items)
+    ref_utc = to_utc_datetime(now_utc) if now_utc is not None else datetime.now(timezone.utc)
+    threshold = ref_utc - timedelta(minutes=recent_minutes)
+    return any((_signal_cutoff_utc(s) or ref_utc) >= threshold for s in open_items)
+
+
 def _extract_direction(direction_str):
     text = str(direction_str or "")
     if "BUY" in text:
@@ -50,26 +85,7 @@ def _extract_direction(direction_str):
 
 
 def _parse_utc_timestamp(val):
-    if not val:
-        return None
-    if hasattr(val, "to_pydatetime"):
-        val = val.to_pydatetime()
-    if isinstance(val, datetime):
-        dt = val if val.tzinfo is not None else val.replace(tzinfo=VN_TZ)
-        return dt.astimezone(timezone.utc)
-    s = str(val).strip()
-    try:
-        dt = datetime.fromisoformat(s)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=VN_TZ)
-        return dt.astimezone(timezone.utc)
-    except ValueError:
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-            try:
-                return datetime.strptime(s[:len(fmt)], fmt).replace(tzinfo=VN_TZ).astimezone(timezone.utc)
-            except ValueError:
-                continue
-    return None
+    return to_utc_datetime(val, default_tz=VN_TZ)
 
 
 def _signal_cutoff_utc(sig):
@@ -79,6 +95,95 @@ def _signal_cutoff_utc(sig):
     ]
     valid = [dt for dt in candidates if dt is not None]
     return max(valid) if valid else None
+
+
+def parse_signal_time_vn(sig):
+    for field in ("open_time_vn", "open_time"):
+        dt = _parse_utc_timestamp(sig.get(field))
+        if dt is not None:
+            return dt.astimezone(VN_TZ)
+    parts = sig.get("id", "").split("_")
+    if len(parts) >= 3:
+        try:
+            return datetime.strptime(f"{parts[1]}_{parts[2]}", "%Y%m%d_%H%M%S").replace(tzinfo=VN_TZ)
+        except ValueError:
+            pass
+    return None
+
+
+def _validate_entry_distance(symbol, open_signals, direction, entry_price, atr):
+    new_side = _extract_direction(direction)
+    allow_hedge = getattr(config, "ALLOW_OPPOSITE_HEDGING", False)
+    if not allow_hedge and new_side:
+        for sig in open_signals:
+            existing_side = _extract_direction(sig.get("direction", ""))
+            if existing_side and existing_side != new_side:
+                return f"Đang có lệnh {existing_side} mở cho {symbol}, chặn mở lệnh {new_side} ngược chiều."
+
+    digits, default_atr = _symbol_digits_and_atr(symbol)
+    last_sig = open_signals[-1]
+    first_entry = float(last_sig.get("entry_price", entry_price))
+    first_side = _extract_direction(last_sig.get("direction", ""))
+    min_dist = getattr(config, "MIN_ENTRY_DISTANCE_ATR", 0.8)
+    atr_val = float(atr) if (atr is not None and atr > 0) else default_atr
+
+    if first_side == "BUY" and new_side == "BUY":
+        req = first_entry - (atr_val * min_dist)
+        if entry_price > req:
+            return f"Đang có 1 lệnh BUY ({first_entry:.{digits}f}). Entry DCA #2 ({entry_price:.{digits}f}) cần <= {req:.{digits}f}."
+        print(f"🎯 [{symbol}] Entry DCA #2 ({entry_price:.{digits}f}) tối ưu hơn lệnh 1 ({first_entry:.{digits}f}) -> Mở lệnh DCA thứ 2!")
+    elif first_side == "SELL" and new_side == "SELL":
+        req = first_entry + (atr_val * min_dist)
+        if entry_price < req:
+            return f"Đang có 1 lệnh SELL ({first_entry:.{digits}f}). Entry DCA #2 ({entry_price:.{digits}f}) cần >= {req:.{digits}f}."
+        print(f"🎯 [{symbol}] Entry DCA #2 ({entry_price:.{digits}f}) tối ưu hơn lệnh 1 ({first_entry:.{digits}f}) -> Mở lệnh DCA thứ 2!")
+    return None
+
+
+def _extract_signal_metadata(metadata):
+    if not isinstance(metadata, dict):
+        return {}
+    return {k: metadata[k] for k in _METADATA_KEYS if k in metadata and metadata[k] is not None}
+
+
+def _same_candle_time(existing_time, new_time):
+    t1, t2 = _parse_utc_timestamp(existing_time), _parse_utc_timestamp(new_time)
+    if t1 is not None and t2 is not None:
+        return t1 == t2
+    return str(existing_time) == str(new_time)
+
+
+def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m", atr=None, metadata=None):
+    history = load_history()
+    for sig in history:
+        if sig.get("symbol") == symbol and _same_candle_time(sig.get("open_time"), time_str):
+            return False, f"Đã có tín hiệu cho cây nến này ({time_str})"
+
+    open_signals = [s for s in history if s.get("symbol") == symbol and s.get("status") == "OPEN"]
+    max_open = getattr(config, "MAX_OPEN_SIGNALS_PER_SYMBOL", 2)
+    if len(open_signals) >= max_open:
+        return False, f"Đã đạt tối đa {max_open} lệnh DCA đang mở cho cặp {symbol}. Chờ chốt TP/SL mới mở tiếp."
+    if open_signals:
+        err = _validate_entry_distance(symbol, open_signals, direction, entry_price, atr)
+        if err:
+            return False, err
+
+    now_vn = datetime.now(VN_TZ)
+    order_num = len(open_signals) + 1
+    base_id = f"{symbol}_{now_vn.strftime('%Y%m%d_%H%M%S')}"
+    existing_ids = {s.get("id") for s in history}
+    signal_id = f"{base_id}_{order_num}" if (order_num > 1 or base_id in existing_ids) else base_id
+    new_sig = {
+        "id": signal_id, "symbol": symbol, "timeframe": timeframe, "direction": direction,
+        "entry_price": entry_price, "tp": tp, "sl": sl, "open_time": time_str,
+        "open_time_vn": now_vn.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "OPEN", "closed_at": None, "close_price": None,
+        "order_num": order_num, "is_dca": order_num > 1,
+    }
+    new_sig.update(_extract_signal_metadata(metadata))
+    history.append(new_sig)
+    save_history(history)
+    return True, signal_id
 
 
 def _evaluate_bar_hit(direction_str, high, low, tp, sl):
@@ -106,94 +211,12 @@ def _iter_ohlc_rows(df):
     return [(row[time_col], float(row["high"]), float(row["low"])) for _, row in df.iterrows()]
 
 
-def parse_signal_time_vn(sig):
-    """Chuyển đổi thời gian mở của tín hiệu về datetime theo giờ Việt Nam (UTC+7)."""
-    for field in ("open_time_vn", "open_time"):
-        dt = _parse_utc_timestamp(sig.get(field))
-        if dt is not None:
-            return dt.astimezone(VN_TZ)
-    parts = sig.get("id", "").split("_")
-    if len(parts) >= 3:
-        try:
-            return datetime.strptime(f"{parts[1]}_{parts[2]}", "%Y%m%d_%H%M%S").replace(tzinfo=VN_TZ)
-        except ValueError:
-            pass
-    return None
-
-
-def _validate_entry_distance(symbol, open_signals, direction, entry_price, atr):
-    new_side = _extract_direction(direction)
-    allow_hedge = getattr(config, "ALLOW_OPPOSITE_HEDGING", False)
-    if not allow_hedge and new_side:
-        for sig in open_signals:
-            existing_side = _extract_direction(sig.get("direction", ""))
-            if existing_side and existing_side != new_side:
-                return f"Đang có lệnh {existing_side} mở cho {symbol}, chặn mở lệnh {new_side} ngược chiều."
-
-    last_sig = open_signals[-1]
-    first_entry = float(last_sig.get("entry_price", entry_price))
-    first_side = _extract_direction(last_sig.get("direction", ""))
-    min_dist = getattr(config, "MIN_ENTRY_DISTANCE_ATR", 0.8)
-    atr_val = float(atr) if (atr is not None and atr > 0) else 10.0
-
-    if first_side == "BUY" and new_side == "BUY":
-        req = first_entry - (atr_val * min_dist)
-        if entry_price > req:
-            return f"Đang có 1 lệnh BUY ({first_entry}). Entry mới ({entry_price}) chưa tối ưu hơn mức yêu cầu (cần <= {req:.2f})."
-        print(f"🎯 [{symbol}] Điểm Entry mới ({entry_price}) tối ưu hơn lệnh 1 ({first_entry}) -> Mở lệnh thứ 2 riêng biệt!")
-    elif first_side == "SELL" and new_side == "SELL":
-        req = first_entry + (atr_val * min_dist)
-        if entry_price < req:
-            return f"Đang có 1 lệnh SELL ({first_entry}). Entry mới ({entry_price}) chưa tối ưu hơn mức yêu cầu (cần >= {req:.2f})."
-        print(f"🎯 [{symbol}] Điểm Entry mới ({entry_price}) tối ưu hơn lệnh 1 ({first_entry}) -> Mở lệnh thứ 2 riêng biệt!")
-    return None
-
-
-_METADATA_KEYS = (
-    "confidence", "pct_change", "pred_end_price", "pred_high", "pred_low",
-    "ref_close", "atr", "adx", "ema_50", "ema_200",
-    "sample_agreement", "sample_std_pct", "strategy_version",
-)
-
-
-def _extract_signal_metadata(metadata):
-    if not isinstance(metadata, dict):
-        return {}
-    return {k: metadata[k] for k in _METADATA_KEYS if k in metadata and metadata[k] is not None}
-
-
-def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m", atr=None, metadata=None):
-    history = load_history()
-    for sig in history:
-        if sig.get("symbol") == symbol and str(sig.get("open_time")) == str(time_str):
-            return False, f"Đã có tín hiệu cho cây nến này ({time_str})"
-
-    open_signals = [s for s in history if s.get("symbol") == symbol and s.get("status") == "OPEN"]
-    max_open = getattr(config, "MAX_OPEN_SIGNALS_PER_SYMBOL", 2)
-    if len(open_signals) >= max_open:
-        return False, f"Đã đạt tối đa {max_open} lệnh đang mở cho cặp {symbol}. Chờ chốt TP/SL mới mở tiếp."
-    if open_signals:
-        err = _validate_entry_distance(symbol, open_signals, direction, entry_price, atr)
-        if err:
-            return False, err
-
-    now_vn = datetime.now(VN_TZ)
-    signal_id = f"{symbol}_{now_vn.strftime('%Y%m%d_%H%M%S')}"
-    new_sig = {
-        "id": signal_id, "symbol": symbol, "timeframe": timeframe, "direction": direction,
-        "entry_price": entry_price, "tp": tp, "sl": sl, "open_time": time_str,
-        "open_time_vn": now_vn.strftime("%Y-%m-%d %H:%M:%S"),
-        "status": "OPEN", "closed_at": None, "close_price": None, "order_num": len(open_signals) + 1,
-    }
-    new_sig.update(_extract_signal_metadata(metadata))
-    history.append(new_sig)
-    save_history(history)
-    return True, signal_id
-
-
 def _apply_hit(sig, status, close_price, closed_at):
     sig["status"] = status
     sig["closed_at"] = closed_at
+    closed_dt = _parse_utc_timestamp(closed_at)
+    if closed_dt is not None:
+        sig["closed_at_vn"] = closed_dt.astimezone(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     sig["close_price"] = close_price
     label = "chạm TP" if status == "HIT_TP" else "dính SL"
     icon = "🎯" if status == "HIT_TP" else "🛑"
@@ -201,7 +224,6 @@ def _apply_hit(sig, status, close_price, closed_at):
 
 
 def update_open_signals(symbol, current_high, current_low, current_price, current_time_str, df=None):
-    """Kiểm tra các tín hiệu OPEN xem đã chạm TP hay SL chưa."""
     history = load_history()
     rows = _iter_ohlc_rows(df)
     cur_utc = _parse_utc_timestamp(current_time_str)
@@ -212,11 +234,11 @@ def update_open_signals(symbol, current_high, current_low, current_price, curren
             continue
         cutoff_utc = _signal_cutoff_utc(sig)
         if rows:
-            for row_t, h, l in rows:
+            for row_t, high_val, low_val in rows:
                 row_utc = _parse_utc_timestamp(row_t)
                 if row_utc is None or (cutoff_utc is not None and row_utc <= cutoff_utc):
                     continue
-                hit = _evaluate_bar_hit(sig["direction"], h, l, sig["tp"], sig["sl"])
+                hit = _evaluate_bar_hit(sig["direction"], high_val, low_val, sig["tp"], sig["sl"])
                 if hit:
                     _apply_hit(sig, hit[0], hit[1], str(row_t))
                     updated = True
@@ -232,91 +254,9 @@ def update_open_signals(symbol, current_high, current_low, current_price, curren
     return updated
 
 
-def _filter_signals_in_range(history, start_vn, end_vn):
-    matched = []
-    for sig in history:
-        t_vn = parse_signal_time_vn(sig)
-        if t_vn and start_vn <= t_vn <= end_vn:
-            matched.append(sig)
-    return matched
-
-
-def _count_symbol_stats(signals, symbol):
-    tp = sum(1 for s in signals if s["symbol"] == symbol and s["status"] == "HIT_TP")
-    sl = sum(1 for s in signals if s["symbol"] == symbol and s["status"] == "HIT_SL")
-    decided = tp + sl
-    return tp, sl, (tp / decided * 100) if decided > 0 else 0.0
-
-
-def _summarize_window(start_date, end_date):
-    start_vn = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0, tzinfo=VN_TZ)
-    end_vn = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59, tzinfo=VN_TZ)
-    items = _filter_signals_in_range(load_history(), start_vn, end_vn)
-    hit_tp = sum(1 for s in items if s["status"] == "HIT_TP")
-    hit_sl = sum(1 for s in items if s["status"] == "HIT_SL")
-    running = sum(1 for s in items if s["status"] == "OPEN")
-    win_rate = (hit_tp / (hit_tp + hit_sl) * 100) if (hit_tp + hit_sl) > 0 else 0.0
-    return len(items), hit_tp, hit_sl, running, win_rate, _count_symbol_stats(items, "XAUUSD"), _count_symbol_stats(items, "BTCUSD")
-
-
 def generate_daily_report(target_date=None):
-    """Tạo báo cáo tổng hợp hiệu suất của ngày hôm qua (chốt lúc 06:00 sáng)."""
-    if target_date is None:
-        target_date = (datetime.now(VN_TZ) - timedelta(days=1)).date()
-    elif isinstance(target_date, str):
-        target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
-
-    total, hit_tp, hit_sl, running, win_rate, (gold_tp, gold_sl, _), (btc_tp, btc_sl, _) = _summarize_window(target_date, target_date)
-    return (
-        "📊 <b>[VÀNG Đánh BTC] - BÁO CÁO HIỆU SUẤT NGÀY</b>\n"
-        f"📅 <b>Ngày tổng kết:</b> <code>{target_date.strftime('%d/%m/%Y')}</code>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📈 <b>Tổng số tín hiệu phát:</b> <code>{total}</code>\n"
-        f"🎯 <b>Đạt mục tiêu (TP):</b> <code>{hit_tp}</code> lệnh\n"
-        f"🛑 <b>Cắt lỗ (SL):</b> <code>{hit_sl}</code> lệnh\n"
-        f"⏳ <b>Đang chạy (Running):</b> <code>{running}</code> lệnh\n"
-        f"🏆 <b>Tỷ lệ thắng (Win Rate):</b> <b>{win_rate:.1f}%</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "<b>Chi tiết theo sản phẩm:</b>\n"
-        f"🟡 <b>Vàng (XAUUSD - H1):</b> <code>{gold_tp}</code> TP / <code>{gold_sl}</code> SL\n"
-        f"🟠 <b>Bitcoin (BTCUSD - M15):</b> <code>{btc_tp}</code> TP / <code>{btc_sl}</code> SL\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>Hệ thống tự động tiếp tục quét chu kỳ mới ngày hôm nay.</i>"
-    )
-
-
-def _resolve_week_bounds(ref_date):
-    weekday = ref_date.weekday()
-    if weekday == 5:
-        return ref_date - timedelta(days=5), ref_date - timedelta(days=1)
-    if weekday == 6:
-        return ref_date - timedelta(days=6), ref_date - timedelta(days=2)
-    monday = ref_date - timedelta(days=weekday)
-    return monday, monday + timedelta(days=4)
+    return build_daily_report(load_history(), parse_signal_time_vn, target_date=target_date)
 
 
 def generate_weekly_report(ref_date=None):
-    """Tạo báo cáo tổng hợp hiệu suất tuần (Thứ 2 đến Thứ 6)."""
-    if ref_date is None:
-        ref_date = datetime.now(VN_TZ).date()
-    elif isinstance(ref_date, str):
-        ref_date = datetime.strptime(ref_date, "%Y-%m-%d").date()
-
-    monday_date, friday_date = _resolve_week_bounds(ref_date)
-    total, hit_tp, hit_sl, running, win_rate, (gold_tp, gold_sl, gold_win), (btc_tp, btc_sl, btc_win) = _summarize_window(monday_date, friday_date)
-    return (
-        "🏆 <b>[VÀNG Đánh BTC] - BÁO CÁO TỔNG KẾT TUẦN</b>\n"
-        f"📅 <b>Giai đoạn:</b> Từ {monday_date.strftime('%d/%m/%Y')} đến {friday_date.strftime('%d/%m/%Y')}\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📈 <b>Tổng số tín hiệu cả tuần:</b> <code>{total}</code>\n"
-        f"🎯 <b>Đạt mục tiêu (TP):</b> <code>{hit_tp}</code> lệnh\n"
-        f"🛑 <b>Cắt lỗ (SL):</b> <code>{hit_sl}</code> lệnh\n"
-        f"⏳ <b>Đang chạy (Running):</b> <code>{running}</code> lệnh\n"
-        f"🔥 <b>TỶ LỆ THẮNG TUẦN (WIN RATE):</b> <b>{win_rate:.1f}%</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "<b>Chi tiết theo sản phẩm:</b>\n"
-        f"🟡 <b>Vàng (XAUUSD - H1):</b> <code>{gold_tp}</code> TP / <code>{gold_sl}</code> SL (Win: <b>{gold_win:.1f}%</b>)\n"
-        f"🟠 <b>Bitcoin (BTCUSD - M15):</b> <code>{btc_tp}</code> TP / <code>{btc_sl}</code> SL (Win: <b>{btc_win:.1f}%</b>)\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🎉 <i>Chúc anh em cuối tuần nghỉ ngơi vui vẻ! Hẹn gặp lại vào tuần tới.</i>"
-    )
+    return build_weekly_report(load_history(), parse_signal_time_vn, ref_date=ref_date)

@@ -86,11 +86,12 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -f signals_history.json ]; then
-            git add signals_history.json
+          if [ -f signals_history.json ] || [ -f bot_state.json ]; then
+            [ -f signals_history.json ] && git add signals_history.json || true
+            [ -f bot_state.json ] && git add bot_state.json || true
             if ! git diff --cached --quiet; then
               git commit -m "chore: lưu lịch sử tín hiệu và trạng thái TP/SL [skip ci]"
-              git pull --rebase origin main
+              git pull --rebase origin main || (git rebase --abort 2>/dev/null || true; git pull --no-rebase --no-edit -X ours origin main)
               git push origin main
             else
               echo "Không có thay đổi lịch sử"

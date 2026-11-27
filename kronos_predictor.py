@@ -1,9 +1,10 @@
+from dataclasses import dataclass
 import os
 import sys
 import numpy as np
 import pandas as pd
-from datetime import timedelta
 import config
+from market_time import build_future_timestamps, format_forecast_window_vn, to_utc_datetime
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -11,6 +12,40 @@ if current_dir not in sys.path:
 
 _GLOBAL_PREDICTOR = None
 _MODEL_LOADED = False
+
+
+@dataclass(frozen=True)
+class SymbolSpec:
+    name: str
+    timeframe: str
+    digits: int
+    threshold: float
+    atr_fallback: float
+
+
+@dataclass(frozen=True)
+class MarketContext:
+    ref_close: float
+    entry_price: float
+    atr: float
+    sl_dist: float
+    min_tp_dist: float
+    adx: float
+    ema_50: float
+    ema_200: float
+
+
+@dataclass(frozen=True)
+class RawForecast:
+    pred_end: float
+    pred_high: float
+    pred_low: float
+    pct_change: float
+    cand_direction: str
+    confidence: float
+    agreement_pct: float
+    std_pct: float
+    forecast_window_vn: str
 
 
 def _resolve_hf_token():
@@ -31,14 +66,13 @@ def _resolve_hf_token():
 
 
 def load_kronos_base():
-    """Tải mô hình Kronos-base và Kronos-Tokenizer-base từ Hugging Face."""
     global _GLOBAL_PREDICTOR, _MODEL_LOADED
     if _GLOBAL_PREDICTOR is not None:
         return _GLOBAL_PREDICTOR
 
     try:
         print("\n[AI KRONOS] Đang khởi động mô hình Kronos-base...")
-        from model import Kronos, KronosTokenizer, KronosPredictor
+        from model import Kronos, KronosPredictor, KronosTokenizer
 
         tokenizer_name = getattr(config, "KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
         model_name = getattr(config, "KRONOS_MODEL_NAME", "NeoQuasar/Kronos-base")
@@ -62,31 +96,41 @@ def load_kronos_base():
         return None
 
 
-def _get_symbol_meta(symbol_name, timeframe):
-    default_thresh = getattr(config, "GOLD_THRESHOLD", 0.30) if (timeframe.lower() == "1h" or symbol_name == "XAUUSD") else getattr(config, "BTC_THRESHOLD", 0.55)
+def _get_symbol_spec(symbol_name, timeframe):
+    is_gold = timeframe.lower() == "1h" or symbol_name == "XAUUSD"
+    default_thresh = getattr(config, "GOLD_THRESHOLD", 0.30) if is_gold else getattr(config, "BTC_THRESHOLD", 0.55)
+    default_atr = 5.0 if is_gold else 150.0
     for item in getattr(config, "SYMBOLS", []):
         if item.get("name") == symbol_name:
-            return int(item.get("digits", 2)), float(item.get("threshold", default_thresh))
-    return 2, float(default_thresh)
+            return SymbolSpec(
+                name=symbol_name,
+                timeframe=timeframe,
+                digits=int(item.get("digits", 2)),
+                threshold=float(item.get("threshold", default_thresh)),
+                atr_fallback=float(item.get("atr_fallback", default_atr)),
+            )
+    return SymbolSpec(symbol_name, timeframe, 2, float(default_thresh), default_atr)
 
 
-def calculate_volatility(df, window=14, digits=2):
-    """Tính độ biến động ATR theo chuẩn Wilder's RMA."""
+def calculate_volatility(df, window=14, digits=2, fallback=5.0):
+    if df is None or len(df) == 0:
+        return fallback
     high, low, prev_close = df["high"], df["low"], df["close"].shift(1)
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1.0 / window, adjust=False).mean().iloc[-1]
-    return round(float(atr), digits) if not np.isnan(atr) else 5.0
+    atr = float(tr.ewm(alpha=1.0 / window, adjust=False).mean().iloc[-1])
+    if np.isnan(atr) or atr <= 0:
+        return fallback
+    rounded = round(atr, digits)
+    return rounded if rounded > 0 else round(atr, max(digits, 6))
 
 
 def calculate_ema(series, span):
-    """Tính đường Exponential Moving Average (EMA)."""
     return series.ewm(span=span, adjust=False).mean()
 
 
 def calculate_adx(df, window=14):
-    """Tính chỉ số ADX theo chuẩn Wilder's RMA."""
     try:
-        if len(df) < window * 2:
+        if df is None or len(df) < window * 2:
             return 0.0
         high, low, close = df["high"], df["low"], df["close"]
         up_move, down_move = high.diff(), -low.diff()
@@ -108,24 +152,38 @@ def calculate_adx(df, window=14):
 
 
 def _clean_candle_df(df):
+    if df is None or getattr(df, "empty", True):
+        return df
     cleaned = df.dropna(subset=["open", "high", "low", "close"]).copy()
     if "volume" in cleaned.columns:
         cleaned["volume"] = cleaned["volume"].fillna(0.0)
     return cleaned
 
 
-def _prepare_kronos_inputs(clean_df, timeframe, pred_len):
+def _to_utc_series(time_col):
+    if hasattr(time_col, "dt") and getattr(time_col.dt, "tz", None) is not None:
+        return time_col.dt.tz_convert("UTC")
+    raw_list = [time_col.iloc[i] for i in range(len(time_col))]
+    utc_list = [to_utc_datetime(v) for v in raw_list if v is not None]
+    parsed = pd.to_datetime([dt.isoformat() for dt in utc_list])
+    if isinstance(pd.DatetimeIndex, type) and pd.DatetimeIndex is not tuple and isinstance(parsed, pd.DatetimeIndex):
+        return pd.Series(parsed, index=getattr(time_col, "index", None))
+    return parsed
+
+
+def _prepare_kronos_inputs(clean_df, spec, pred_len):
     lookback = min(len(clean_df), getattr(config, "CANDLE_LIMIT", 200))
     context_df = clean_df.tail(lookback).copy()
-    x_timestamp = pd.to_datetime(context_df["time"])
-    is_hourly = timeframe.lower() == "1h"
-    step_delta = timedelta(hours=1) if is_hourly else timedelta(minutes=15)
-    y_timestamp = pd.date_range(start=x_timestamp.iloc[-1] + step_delta, periods=pred_len, freq="1h" if is_hourly else "15min")
+    x_timestamp = _to_utc_series(context_df["time"])
+    last_x_time = x_timestamp.iloc[-1] if hasattr(x_timestamp, "iloc") else x_timestamp[-1]
+    future_utc = build_future_timestamps(last_x_time, spec.name, spec.timeframe, pred_len)
+    y_timestamp = pd.DatetimeIndex(future_utc) if isinstance(pd.DatetimeIndex, type) and pd.DatetimeIndex is not tuple else future_utc
+    window_vn = format_forecast_window_vn(future_utc, spec.timeframe)
 
     x_df = context_df[["open", "high", "low", "close", "volume"]].copy()
     if "amount" not in x_df.columns:
         x_df["amount"] = x_df["volume"] * x_df[["open", "high", "low", "close"]].mean(axis=1)
-    return x_df, x_timestamp, y_timestamp
+    return x_df, x_timestamp, y_timestamp, window_vn
 
 
 def _run_kronos_predict(predictor, x_df, x_timestamp, y_timestamp, pred_len):
@@ -141,105 +199,140 @@ def _run_kronos_predict(predictor, x_df, x_timestamp, y_timestamp, pred_len):
     return res if isinstance(res, tuple) and len(res) == 2 else (res, [res])
 
 
-def _compute_mc_confidence(cand_direction, pct_change, ref_close, sample_dfs):
+def _compute_mc_confidence(cand_direction, pct_change, ref_close, sample_dfs, threshold=0.30):
     if "SIDEWAY" in cand_direction or ref_close <= 0:
         return 50.0, 0.0, 0.0
     sample_pcts = [(float(s["close"].iloc[-1]) - ref_close) / ref_close * 100.0 for s in (sample_dfs or [])] or [pct_change]
-    aligned = sum(1 for p in sample_pcts if (p > 0 if "BUY" in cand_direction else p < 0))
+    min_move = max(0.05, 0.5 * float(threshold))
+    aligned = sum(1 for p in sample_pcts if (p >= min_move if "BUY" in cand_direction else p <= -min_move))
     agreement_ratio = aligned / len(sample_pcts)
     std_pct = float(np.std(sample_pcts))
     snr_score = min(1.0, (abs(pct_change) / (std_pct + 0.15)) / 2.5)
-    conf = round(min(95.0, 45.0 + 35.0 * agreement_ratio + 15.0 * snr_score), 1)
+    dispersion_penalty = max(0.0, (std_pct / max(abs(pct_change), 0.1) - 0.8) * 12.0)
+    raw_conf = 42.0 + 38.0 * agreement_ratio + 15.0 * snr_score - dispersion_penalty
+    conf = round(float(np.clip(raw_conf, 35.0, 95.0)), 1)
     return conf, round(agreement_ratio * 100.0, 1), round(std_pct, 3)
 
 
-def _apply_entry_slippage_and_targets(symbol_name, direction, conf, ref_close, entry_price, pred_high, pred_low, atr, sl_dist, min_tp_dist):
-    if "SIDEWAY" in direction:
-        return direction, conf, entry_price, entry_price, False
-    max_slip = getattr(config, "MAX_ENTRY_SLIPPAGE_ATR", 0.35)
-    drift = abs(entry_price - ref_close)
-    if atr > 0 and drift > max_slip * atr:
-        print(f"[BỘ LỌC TRƯỢT GIÁ] {symbol_name}: Giá hiện tại ({entry_price:.2f}) lệch {drift:.2f} > {max_slip}*ATR ({max_slip * atr:.2f}) so với nến đóng ({ref_close:.2f}) -> Bỏ kèo!")
-        return "⚪ SIDEWAY (ĐI NGANG)", 51.0, entry_price, entry_price, True
-    if "BUY" in direction:
-        return direction, conf, entry_price + max(pred_high - entry_price, min_tp_dist), entry_price - sl_dist, False
-    return direction, conf, entry_price - max(entry_price - pred_low, min_tp_dist), entry_price + sl_dist, False
+def _summarize_samples(pred_df, sample_dfs, ref_close, spec, window_vn):
+    if sample_dfs and len(sample_dfs) > 1:
+        pred_end = float(np.median([float(s["close"].iloc[-1]) for s in sample_dfs]))
+        pred_high = float(np.median([float(s["high"].max()) for s in sample_dfs]))
+        pred_low = float(np.median([float(s["low"].min()) for s in sample_dfs]))
+    else:
+        pred_end = float(pred_df["close"].iloc[-1])
+        pred_high, pred_low = float(pred_df["high"].max()), float(pred_df["low"].min())
 
-
-def _resolve_direction_and_targets(symbol_name, ref_close, entry_price, pred_df, sample_dfs, threshold, atr, sl_dist, min_tp_dist, adx_val, ema_50, ema_200):
-    pred_end = float(pred_df["close"].iloc[-1])
-    pred_high, pred_low = float(pred_df["high"].max()), float(pred_df["low"].min())
     pct_change = (pred_end - ref_close) / ref_close * 100.0
-    cand = "🟢 BUY (TĂNG)" if pct_change >= threshold else ("🔴 SELL (GIẢM)" if pct_change <= -threshold else "⚪ SIDEWAY (ĐI NGANG)")
-    conf, agree_pct, std_pct = _compute_mc_confidence(cand, pct_change, ref_close, sample_dfs)
+    cand = "🟢 BUY (TĂNG)" if pct_change >= spec.threshold else ("🔴 SELL (GIẢM)" if pct_change <= -spec.threshold else "⚪ SIDEWAY (ĐI NGANG)")
+    conf, agree_pct, std_pct = _compute_mc_confidence(cand, pct_change, ref_close, sample_dfs, spec.threshold)
+    return RawForecast(pred_end, pred_high, pred_low, pct_change, cand, conf, agree_pct, std_pct, window_vn)
 
-    if getattr(config, "USE_SIDEWAY_FILTER", True) and adx_val < getattr(config, "ADX_THRESHOLD", 20.0):
-        print(f"[BỘ LỌC SIDEWAY] {symbol_name}: ADX = {adx_val:.1f} -> Thị trường đi ngang tích lũy, giữ im lặng.")
-        return "⚪ SIDEWAY (ĐI NGANG)", 50.0, entry_price, entry_price, pct_change, pred_end, pred_high, pred_low, agree_pct, std_pct, False
+
+def _evaluate_entry_and_targets(spec, ctx, forecast):
+    if "SIDEWAY" in forecast.cand_direction:
+        return forecast.cand_direction, forecast.confidence, ctx.entry_price, ctx.entry_price, False
+
+    is_buy = "BUY" in forecast.cand_direction
+    signed_drift = (ctx.entry_price - ctx.ref_close) if is_buy else (ctx.ref_close - ctx.entry_price)
+    max_adverse = getattr(config, "MAX_ENTRY_SLIPPAGE_ATR", 0.35) * ctx.atr
+    max_pullback = getattr(config, "MAX_FAVORABLE_PULLBACK_ATR", 0.80) * ctx.atr
+    d = spec.digits
+
+    if signed_drift > max_adverse or signed_drift < -max_pullback:
+        print(
+            f"[BỘ LỌC TRƯỢT GIÁ] {spec.name}: Giá vào ({ctx.entry_price:.{d}f}) lệch {signed_drift:+.{d}f} "
+            f"vượt ngưỡng cho phép so với nến đóng ({ctx.ref_close:.{d}f}, ATR={ctx.atr:.{d}f}) -> Bỏ kèo!"
+        )
+        return "⚪ SIDEWAY (ĐI NGANG)", 51.0, ctx.entry_price, ctx.entry_price, True
+
+    tp = forecast.pred_high if is_buy else forecast.pred_low
+    sl = (ctx.entry_price - ctx.sl_dist) if is_buy else (ctx.entry_price + ctx.sl_dist)
+    reward = (tp - ctx.entry_price) if is_buy else (ctx.entry_price - tp)
+    if reward < ctx.min_tp_dist - 1e-9:
+        print(
+            f"[BỘ LỌC R:R] {spec.name}: Biên độ TP dự phóng ({reward:.{d}f}) < chuẩn R:R tối thiểu "
+            f"({ctx.min_tp_dist:.{d}f}) -> Bỏ kèo!"
+        )
+        return "⚪ SIDEWAY (ĐI NGANG)", 53.0, ctx.entry_price, ctx.entry_price, False
+    return forecast.cand_direction, forecast.confidence, tp, sl, False
+
+
+def _apply_regime_filters(spec, ctx, forecast):
+    if getattr(config, "USE_SIDEWAY_FILTER", True) and ctx.adx < getattr(config, "ADX_THRESHOLD", 20.0):
+        print(f"[BỘ LỌC SIDEWAY] {spec.name}: ADX = {ctx.adx:.1f} -> Thị trường đi ngang tích lũy, giữ im lặng.")
+        return "⚪ SIDEWAY (ĐI NGANG)", 50.0, ctx.entry_price, ctx.entry_price, False
 
     if getattr(config, "USE_TREND_FILTER", True):
-        if cand == "🟢 BUY (TĂNG)" and (ref_close < ema_50 or ref_close < ema_200):
-            print(f"[BỘ LỌC XU HƯỚNG EMA] {symbol_name}: Giá ({ref_close}) < EMA50/200 ({ema_50:.1f}/{ema_200:.1f}) -> Bỏ qua BUY để tránh bắt dao rơi")
-            return "⚪ SIDEWAY (ĐI NGANG)", 52.0, entry_price, entry_price, pct_change, pred_end, pred_high, pred_low, agree_pct, std_pct, False
-        if cand == "🔴 SELL (GIẢM)" and (ref_close > ema_50 or ref_close > ema_200):
-            print(f"[BỘ LỌC XU HƯỚNG EMA] {symbol_name}: Giá ({ref_close}) > EMA50/200 ({ema_50:.1f}/{ema_200:.1f}) -> Bỏ qua SELL để tránh chặn đầu xe lửa")
-            return "⚪ SIDEWAY (ĐI NGANG)", 52.0, entry_price, entry_price, pct_change, pred_end, pred_high, pred_low, agree_pct, std_pct, False
+        if forecast.cand_direction == "🟢 BUY (TĂNG)" and (ctx.ref_close < ctx.ema_50 or ctx.ref_close < ctx.ema_200):
+            print(f"[BỘ LỌC XU HƯỚNG EMA] {spec.name}: Giá ({ctx.ref_close:.{spec.digits}f}) < EMA50/200 ({ctx.ema_50:.1f}/{ctx.ema_200:.1f}) -> Bỏ qua BUY")
+            return "⚪ SIDEWAY (ĐI NGANG)", 52.0, ctx.entry_price, ctx.entry_price, False
+        if forecast.cand_direction == "🔴 SELL (GIẢM)" and (ctx.ref_close > ctx.ema_50 or ctx.ref_close > ctx.ema_200):
+            print(f"[BỘ LỌC XU HƯỚNG EMA] {spec.name}: Giá ({ctx.ref_close:.{spec.digits}f}) > EMA50/200 ({ctx.ema_50:.1f}/{ctx.ema_200:.1f}) -> Bỏ qua SELL")
+            return "⚪ SIDEWAY (ĐI NGANG)", 52.0, ctx.entry_price, ctx.entry_price, False
 
-    direction, conf, tp, sl, slip_blocked = _apply_entry_slippage_and_targets(
-        symbol_name, cand, conf, ref_close, entry_price, pred_high, pred_low, atr, sl_dist, min_tp_dist,
-    )
-    return direction, conf, tp, sl, pct_change, pred_end, pred_high, pred_low, agree_pct, std_pct, slip_blocked
+    return _evaluate_entry_and_targets(spec, ctx, forecast)
 
 
-def _no_ai_result(entry_price, ref_close, atr, adx_val, ema_50, ema_200, digits=2):
+def _build_no_ai_response(spec, ctx):
+    d = spec.digits
     return {
-        "current_price": round(entry_price, digits), "ref_close": round(ref_close, digits),
+        "current_price": round(ctx.entry_price, d), "ref_close": round(ctx.ref_close, d),
         "direction": "⚪ SIDEWAY (ĐI NGANG)", "confidence": 0.0,
-        "tp": round(entry_price, digits), "sl": round(entry_price, digits),
-        "atr": atr, "ai_predicted": False, "slippage_blocked": False, "pct_change": 0.0,
-        "pred_end_price": round(ref_close, digits), "pred_high": round(ref_close, digits), "pred_low": round(ref_close, digits),
-        "adx": adx_val, "ema_50": round(ema_50, digits), "ema_200": round(ema_200, digits),
-        "sample_agreement": 0.0, "sample_std_pct": 0.0, "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.2-p1-lite"),
+        "tp": round(ctx.entry_price, d), "sl": round(ctx.entry_price, d),
+        "atr": ctx.atr, "ai_predicted": False, "slippage_blocked": False, "pct_change": 0.0,
+        "pred_end_price": round(ctx.ref_close, d), "pred_high": round(ctx.ref_close, d), "pred_low": round(ctx.ref_close, d),
+        "adx": ctx.adx, "ema_50": round(ctx.ema_50, d), "ema_200": round(ctx.ema_200, d),
+        "sample_agreement": 0.0, "sample_std_pct": 0.0, "forecast_window_vn": "",
+        "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.3-p1-audit"),
     }
 
 
-def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=None):
-    """Phân tích & dự báo xu hướng bằng KRONOS-BASE kết hợp EMA, Wilder ATR/ADX, MC & Trượt giá."""
-    digits, threshold = _get_symbol_meta(symbol_name, timeframe)
-    clean_df = _clean_candle_df(df)
-    if clean_df.empty:
-        return _no_ai_result(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, digits)
-
+def _build_market_context(clean_df, spec, live_price):
     ref_close = float(clean_df["close"].iloc[-1])
     entry_price = float(live_price) if (live_price is not None and not np.isnan(live_price)) else ref_close
-    atr = calculate_volatility(clean_df, digits=digits)
+    atr = calculate_volatility(clean_df, digits=spec.digits, fallback=spec.atr_fallback)
     sl_dist = atr * getattr(config, "ATR_SL_MULTIPLIER", 1.5)
     min_tp_dist = sl_dist * getattr(config, "MIN_RR_RATIO", 1.2)
     adx_val = calculate_adx(clean_df)
     ema_50 = float(calculate_ema(clean_df["close"], 50).iloc[-1])
-    ema_200 = float(calculate_ema(clean_df["close"], min(len(clean_df), 200)).iloc[-1])
+    ema_200 = float(calculate_ema(clean_df["close"], 200).iloc[-1])
+    return MarketContext(ref_close, entry_price, atr, sl_dist, min_tp_dist, adx_val, ema_50, ema_200)
 
+
+def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=None):
+    spec = _get_symbol_spec(symbol_name, timeframe)
+    clean_df = _clean_candle_df(df)
+    if clean_df is None or clean_df.empty:
+        empty_ctx = MarketContext(0.0, 0.0, spec.atr_fallback, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return _build_no_ai_response(spec, empty_ctx)
+
+    ctx = _build_market_context(clean_df, spec, live_price)
     predictor = load_kronos_base()
     if predictor is not None and len(clean_df) >= 25:
         try:
             print(f"[AI KRONOS] Đang chạy suy luận K-line cho {symbol_name} ({timeframe})...")
-            x_df, x_timestamp, y_timestamp = _prepare_kronos_inputs(clean_df, timeframe, pred_len)
+            x_df, x_timestamp, y_timestamp, window_vn = _prepare_kronos_inputs(clean_df, spec, pred_len)
             pred_df, sample_dfs = _run_kronos_predict(predictor, x_df, x_timestamp, y_timestamp, pred_len)
-            direction, conf, tp, sl, pct_change, p_end, p_high, p_low, agree, std_pct, slip_blocked = _resolve_direction_and_targets(
-                symbol_name, ref_close, entry_price, pred_df, sample_dfs, threshold, atr, sl_dist, min_tp_dist, adx_val, ema_50, ema_200,
+            forecast = _summarize_samples(pred_df, sample_dfs, ctx.ref_close, spec, window_vn)
+            direction, conf, tp, sl, slip_blocked = _apply_regime_filters(spec, ctx, forecast)
+            d = spec.digits
+            print(
+                f"[AI KRONOS PHÂN TÍCH] {symbol_name} ({timeframe}): {direction} | Dự phóng: {forecast.pct_change:+.2f}% "
+                f"| Đồng thuận: {forecast.agreement_pct}% | ADX: {ctx.adx:.1f} | Tin cậy: {conf}%"
             )
-            print(f"[AI KRONOS PHÂN TÍCH] {symbol_name} ({timeframe}): {direction} | Dự phóng: {pct_change:+.2f}% | Đồng thuận: {agree}% | ADX: {adx_val:.1f} | Tin cậy: {conf}%")
             return {
-                "current_price": round(entry_price, digits), "ref_close": round(ref_close, digits),
-                "direction": direction, "confidence": conf, "tp": round(tp, digits), "sl": round(sl, digits),
-                "atr": atr, "ai_predicted": True, "slippage_blocked": slip_blocked,
-                "pct_change": round(pct_change, 2), "pred_end_price": round(p_end, digits),
-                "pred_high": round(p_high, digits), "pred_low": round(p_low, digits),
-                "adx": adx_val, "ema_50": round(ema_50, digits), "ema_200": round(ema_200, digits),
-                "sample_agreement": agree, "sample_std_pct": std_pct,
-                "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.2-p1-lite"),
+                "current_price": round(ctx.entry_price, d), "ref_close": round(ctx.ref_close, d),
+                "direction": direction, "confidence": conf, "tp": round(tp, d), "sl": round(sl, d),
+                "atr": ctx.atr, "ai_predicted": True, "slippage_blocked": slip_blocked,
+                "pct_change": round(forecast.pct_change, 2), "pred_end_price": round(forecast.pred_end, d),
+                "pred_high": round(forecast.pred_high, d), "pred_low": round(forecast.pred_low, d),
+                "adx": ctx.adx, "ema_50": round(ctx.ema_50, d), "ema_200": round(ctx.ema_200, d),
+                "sample_agreement": forecast.agreement_pct, "sample_std_pct": forecast.std_pct,
+                "forecast_window_vn": forecast.forecast_window_vn,
+                "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.3-p1-audit"),
             }
         except Exception as e:
             print(f"[CẢNH BÁO AI] Lỗi trong quá trình suy luận Kronos: {e}")
 
-    return _no_ai_result(entry_price, ref_close, atr, adx_val, ema_50, ema_200, digits)
+    return _build_no_ai_response(spec, ctx)

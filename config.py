@@ -1,10 +1,33 @@
 import os
 
-# Cấu hình Bot Telegram
+
+def _load_local_dotenv(env_path=None):
+    env_path = env_path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8-sig") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export "):].strip()
+                key, val = line.split("=", 1)
+                key, val = key.strip(), val.strip()
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+                    val = val[1:-1]
+                if key:
+                    os.environ.setdefault(key, val)
+    except OSError:
+        pass
+
+
+_load_local_dotenv()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "")
 
-# Cấu hình mô hình AI Kronos chính thức từ Hugging Face
 KRONOS_MODEL_NAME = "NeoQuasar/Kronos-base"
 KRONOS_TOKENIZER_NAME = "NeoQuasar/Kronos-Tokenizer-base"
 hf_token_val = os.getenv("HF_TOKEN", "").strip()
@@ -15,61 +38,56 @@ else:
     os.environ.pop("HF_TOKEN", None)
     os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
 
-# Danh sách cấu hình tài sản ĐA KHUNG THỜI GIAN
 SYMBOLS = [
     {
         "name": "BTCUSD",
-        "ticker": "BTC-USD",      # Bitcoin
+        "ticker": "BTC-USD",
         "label": "BITCOIN (BTCUSD)",
-        "timeframe": "15m",       # Khung M15 cho BTC
+        "timeframe": "15m",
         "unit": "$",
         "digits": 2,
         "threshold": 0.55,
-        "predict_len": 12,        # Dự báo 12 nến M15 (3 tiếng tới)
-        "period": "5d"
+        "atr_fallback": 150.0,
+        "predict_len": 12,
+        "period": "5d",
     },
     {
         "name": "XAUUSD",
-        "ticker": "GC=F",         # Vàng thế giới
+        "ticker": "GC=F",
         "label": "VÀNG (XAUUSD)",
-        "timeframe": "1h",        # Khung 1H cho Vàng (ít nhiễu, chuẩn kỹ thuật)
+        "timeframe": "1h",
         "unit": "$",
         "digits": 2,
         "threshold": 0.30,
-        "predict_len": 6,         # Dự báo 6 nến 1H (6 tiếng tới)
-        "period": "30d"
-    }
+        "atr_fallback": 5.0,
+        "predict_len": 6,
+        "period": "30d",
+    },
 ]
 
-CANDLE_LIMIT = 200              # Context length fed into Kronos-base
-INDICATOR_CANDLE_LIMIT = 450    # Closed bars fetched for EMA200 / Wilder ATR & ADX convergence
+CANDLE_LIMIT = 200
+INDICATOR_CANDLE_LIMIT = 450
 
-# Ngưỡng tin cậy tối thiểu để bắn tín hiệu (siết chặt từ 70% lên 75%)
 CONFIDENCE_THRESHOLD = 75.0
-
-# Ngưỡng biến động phần trăm tối thiểu trong chuỗi nến dự báo
-BTC_THRESHOLD = 0.55       # Tối thiểu 0.55% cho BTC (M15) để loại trừ nhiễu nhỏ
-GOLD_THRESHOLD = 0.30      # Tối thiểu 0.30% cho Vàng (1H)
+BTC_THRESHOLD = 0.55
+GOLD_THRESHOLD = 0.30
 
 KRONOS_SAMPLE_COUNT = 5
 KRONOS_TEMPERATURE = 0.6
 KRONOS_TOP_P = 0.9
-STRATEGY_VERSION = "v3.2-p1-lite"
+STRATEGY_VERSION = "v3.3-p1-audit"
 
-# Cấu hình Quản lý Rủi ro TP / SL
-ATR_SL_MULTIPLIER = 1.5    # SL = 1.5 * ATR (nới rộng chống quét râu nến M15 & H1)
-MIN_RR_RATIO = 1.2         # Tỷ lệ R:R tối thiểu (TP >= 1.2 * khoảng cách SL để không bị giảm R:R)
+ATR_SL_MULTIPLIER = 1.5
+MIN_RR_RATIO = 1.2
 
-# Cấu hình Quản lý Vị thế & Chặn nhồi lệnh
-ALLOW_OPPOSITE_HEDGING = False     # Block opening opposite direction while a signal is OPEN
-MAX_OPEN_SIGNALS_PER_SYMBOL = 2    # Tối đa 2 lệnh riêng biệt cùng lúc cho mỗi cặp
-MIN_ENTRY_DISTANCE_ATR = 0.8       # Lệnh thứ 2 chỉ được mở nếu Entry đẹp hơn ít nhất 0.8 * ATR
-MAX_ENTRY_SLIPPAGE_ATR = 0.35      # Block signal if live price drifted beyond 0.35 * ATR from closed bar
+ALLOW_OPPOSITE_HEDGING = False
+MAX_OPEN_SIGNALS_PER_SYMBOL = 2
+MIN_ENTRY_DISTANCE_ATR = 0.8
+MAX_ENTRY_SLIPPAGE_ATR = 0.35
+MAX_FAVORABLE_PULLBACK_ATR = 0.80
 
-# Bộ lọc Kỹ thuật nâng cao
-USE_TREND_FILTER = True            # Bộ lọc xu hướng EMA 50 & 200 (không đánh ngược sóng lớn)
-USE_SIDEWAY_FILTER = True          # Bộ lọc thị trường Sideway bằng chỉ số ADX
-ADX_THRESHOLD = 20.0               # ADX < 20 là thị trường đi ngang tích lũy, tạm dừng bắn lệnh
+USE_TREND_FILTER = True
+USE_SIDEWAY_FILTER = True
+ADX_THRESHOLD = 20.0
 
-# Giờ gửi báo cáo tổng kết hàng ngày (Giờ Việt Nam UTC+7)
-DAILY_REPORT_HOUR_VN = 6  # 06:00 sáng
+DAILY_REPORT_HOUR_VN = 6

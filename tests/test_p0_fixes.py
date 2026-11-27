@@ -231,8 +231,10 @@ class TestP0Fixes(unittest.TestCase):
             self.assertEqual(send_spy.call_count, 2)
             main.check_and_send_daily_report_if_due(now_vn=datetime(2026, 11, 21, 6, 5, tzinfo=VN_TZ))
             self.assertEqual(send_spy.call_count, 2)
-            main.check_and_send_daily_report_if_due(now_vn=datetime(2026, 11, 22, 6, 15, tzinfo=VN_TZ))
-            self.assertEqual(send_spy.call_count, 2)
+            main.check_and_send_daily_report_if_due(now_vn=datetime(2026, 11, 22, 6, 25, tzinfo=VN_TZ))
+            self.assertEqual(send_spy.call_count, 3)
+            main.check_and_send_daily_report_if_due(now_vn=datetime(2026, 11, 23, 7, 0, tzinfo=VN_TZ))
+            self.assertEqual(send_spy.call_count, 3)
 
         with (
             mock.patch.object(main, "check_and_send_daily_report_if_due"),
