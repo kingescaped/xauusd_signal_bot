@@ -158,6 +158,13 @@ class TestAuditFixes(unittest.TestCase):
         stale_path = os.path.join(self.tmp_dir.name, "stale.png")
         with open(stale_path, "wb") as f:
             f.write(b"OLD_PNG")
+        captured_title = {}
+        with mock.patch.object(chart_visualizer.mpf, "plot", side_effect=lambda *a, **kw: captured_title.update(kw.get("title", {}))):
+            chart_visualizer.create_signal_chart(df, "BTCUSD", "BTC", "15m", "$", "BUY", 70000.0, 70800.0, 69500.0, output_path=stale_path)
+        self.assertIn("LVQ Std SIGNAL", captured_title.get("title", ""))
+
+        with open(stale_path, "wb") as f:
+            f.write(b"OLD_PNG")
         with mock.patch.object(chart_visualizer.mpf, "plot", side_effect=RuntimeError("plot fail")):
             out = chart_visualizer.create_signal_chart(df, "BTCUSD", "BTC", "15m", "$", "BUY", 70000.0, 70800.0, 69500.0, output_path=stale_path)
         self.assertIsNone(out)

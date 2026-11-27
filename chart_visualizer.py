@@ -37,8 +37,8 @@ def create_signal_chart(df, symbol_name, symbol_label, timeframe, unit, predicte
         tf_label = format_timeframe_label(timeframe)
         clean_dir = predicted_direction.replace("🟢", "").replace("🔴", "").replace("⚪", "").strip()
         title = (
-            f"{symbol_label} ({tf_label} - Giờ VN) | KRONOS AI SIGNAL: {clean_dir}\n"
-            f"Entry: {current_price:.{digits}f} | TP: {tp:.{digits}f} | SL: {sl:.{digits}f}"
+            f"{symbol_label} ({tf_label} - Giờ VN) | LVQ Std SIGNAL: {clean_dir}\n"
+            f"Current: {current_price:.{digits}f} | TP: {tp:.{digits}f} | SL: {sl:.{digits}f}"
         )
 
         mpf.plot(
