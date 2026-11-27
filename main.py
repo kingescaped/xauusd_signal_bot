@@ -1,205 +1,178 @@
-import time
-import schedule
 import argparse
 import os
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import datetime, timedelta, timezone
+import schedule
 import config
-from fetch_data import get_candles
-from kronos_predictor import predict_future
+from bot_state import has_sent_report, mark_report_sent
 from chart_visualizer import create_signal_chart
-from history_tracker import add_new_signal, update_open_signals, generate_daily_report, generate_weekly_report
-from telegram_notifier import send_telegram_photo, send_telegram_message, test_telegram
+from fetch_data import get_candles, split_closed_and_live
+from history_tracker import add_new_signal, generate_daily_report, generate_weekly_report, update_open_signals
+from kronos_predictor import predict_future
+from telegram_notifier import send_telegram_message, send_telegram_photo, test_telegram
+
+VN_TZ = timezone(timedelta(hours=7))
+
 
 def is_market_open(symbol_name, now_vn):
-    """
-    Kiểm tra thị trường có đang mở cửa không:
-    - BTCUSD: Crypto mở cửa 24/7 không nghỉ.
-    - XAUUSD (Vàng thế giới):
-        + Đóng cửa cuối tuần: Từ 05:00 sáng Thứ Bảy đến 06:00 sáng Thứ Hai (giờ VN).
-        + Nghỉ bảo trì kỹ thuật hàng ngày: 05:00 - 06:00 sáng từ Thứ Ba đến Thứ Sáu.
-    """
+    """Kiểm tra thị trường có đang mở cửa không (Crypto 24/7, Vàng nghỉ cuối tuần & 05-06h VN)."""
     if symbol_name != "XAUUSD":
         return True, "Thị trường Crypto mở cửa 24/7"
 
-    weekday = now_vn.weekday()  # 0: Thứ 2, 1: Thứ 3, ..., 5: Thứ 7, 6: Chủ Nhật
-    hour = now_vn.hour
-
+    weekday, hour = now_vn.weekday(), now_vn.hour
     if weekday == 5 and hour >= 5:
         return False, "Thị trường Vàng đã đóng cửa cuối tuần (từ 05:00 sáng Thứ Bảy). Sẽ mở lại lúc 06:00 sáng Thứ Hai tới!"
     if weekday == 6:
         return False, "Hôm nay là Chủ Nhật: Thị trường Vàng đang đóng cửa cuối tuần. Sẽ mở lại lúc 06:00 sáng Thứ Hai tới!"
     if weekday == 0 and hour < 6:
         return False, "Thị trường Vàng chưa mở cửa tuần mới (Mở lúc 06:00 sáng Thứ Hai VN)."
-    if weekday in [1, 2, 3, 4] and hour == 5:
+    if weekday in (1, 2, 3, 4) and hour == 5:
         return False, "Giờ nghỉ kỹ thuật hằng ngày của Vàng thế giới (05:00 - 06:00 sáng VN)."
-
     return True, "Thị trường Vàng đang mở cửa giao dịch bình thường"
 
-def check_and_send_daily_report_if_due():
-    """Kiểm tra nếu đang trong khoảng 06:00 - 06:15 sáng (giờ VN) thì gửi báo cáo."""
-    now_vn = datetime.now(timezone(timedelta(hours=7)))
-    if now_vn.hour == config.DAILY_REPORT_HOUR_VN and now_vn.minute < 16:
-        print(f"[{now_vn.strftime('%H:%M:%S')}] Đến 6:00 sáng VN -> Đang tổng hợp báo cáo ngày hôm qua...")
-        daily_text = generate_daily_report()
-        send_telegram_message(daily_text)
-        print("Đã gửi báo cáo ngày hôm qua vào nhóm!")
 
-        # Nếu là sáng Thứ Bảy (weekday == 5) -> Gửi thêm báo cáo tổng kết tuần
-        if now_vn.weekday() == 5:
-            print(f"[{now_vn.strftime('%H:%M:%S')}] Sáng Thứ Bảy -> Đang tổng hợp báo cáo tổng kết tuần...")
-            weekly_text = generate_weekly_report()
-            send_telegram_message(weekly_text)
+def check_and_send_daily_report_if_due(now_vn=None):
+    """Kiểm tra nếu đang trong khoảng 06:00 - 06:14 sáng (giờ VN) thì gửi báo cáo đúng 1 lần."""
+    now_vn = now_vn or datetime.now(VN_TZ)
+    if now_vn.hour != config.DAILY_REPORT_HOUR_VN or now_vn.minute >= 15:
+        return
+
+    today_key = now_vn.strftime("%Y-%m-%d")
+    if not has_sent_report("daily_report", today_key):
+        print(f"[{now_vn.strftime('%H:%M:%S')}] Đến 6:00 sáng VN -> Đang tổng hợp báo cáo ngày hôm qua...")
+        if send_telegram_message(generate_daily_report()):
+            mark_report_sent("daily_report", today_key)
+            print("Đã gửi báo cáo ngày hôm qua vào nhóm!")
+
+    if now_vn.weekday() == 5 and not has_sent_report("weekly_report", today_key):
+        print(f"[{now_vn.strftime('%H:%M:%S')}] Sáng Thứ Bảy -> Đang tổng hợp báo cáo tổng kết tuần...")
+        if send_telegram_message(generate_weekly_report()):
+            mark_report_sent("weekly_report", today_key)
             print("Đã gửi báo cáo tổng kết tuần vào nhóm!")
 
-def run_single_cycle(manual_force=False):
-    now_vn = datetime.now(timezone(timedelta(hours=7)))
+
+def _dispatch_telegram(chart_path, caption):
+    if chart_path and os.path.exists(chart_path):
+        send_telegram_photo(chart_path, caption)
+    else:
+        send_telegram_message(caption)
+
+
+def _build_signal_caption(item, result, tf_label):
+    nhan_dinh = "Nhận định của Vàng" if item["name"] == "XAUUSD" else "Nhận định của BTC"
+    adx_info = f" | *ADX:* `{result.get('adx', 0):.1f}`" if "adx" in result else ""
+    unit = item["unit"]
+    return (
+        f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {item['label']}*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 *Sản phẩm:* `{item['name']}` | *Khung:* `{tf_label}`\n"
+        f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
+        f"🚀 *Tín hiệu:* *{result['direction']}*\n"
+        f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%)\n"
+        f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({item['predict_len']} nến tới)\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
+        f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
+        f"⚡ *Biến động ATR:* `{result['atr']}`{adx_info}\n\n"
+        f"💡 *{nhan_dinh}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
+        "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
+    )
+
+
+def _build_force_caption(item, result, tf_label):
+    nhan_dinh = "Nhận định của Vàng" if item["name"] == "XAUUSD" else "Nhận định của BTC"
+    ai_note = "" if result.get("ai_predicted", False) else "\n⚠️ *[CẢNH BÁO: Kronos AI không khả dụng, không tạo tín hiệu giao dịch]*"
+    return (
+        f"📊 *[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {item['label']}*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 *Sản phẩm:* `{item['name']}` | *Khung:* `{tf_label}`\n"
+        f"💰 *Giá hiện tại:* `{result['current_price']} {item['unit']}`\n"
+        f"🎯 *Trạng thái:* *{result['direction']}*\n"
+        f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ {config.CONFIDENCE_THRESHOLD}% để vào lệnh)*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *{nhan_dinh}:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!{ai_note}"
+    )
+
+
+def _handle_symbol_result(item, df, time_str, result, manual_force):
+    symbol_name, label, timeframe = item["name"], item["label"], item["timeframe"]
+    ai_ok = bool(result.get("ai_predicted", False))
+    is_high_conf = ai_ok and result["confidence"] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result["direction"]
+    if not is_high_conf and not manual_force:
+        msg = "Kronos AI không khả dụng -> bỏ qua tín hiệu." if not ai_ok else f"Độ tin cậy {result['confidence']}% (< {config.CONFIDENCE_THRESHOLD}%) hoặc Sideway -> Giữ yên lặng tuyệt đối, không gửi tin nhắn."
+        print(f"-> {symbol_name}: {msg}")
+        return
+
+    tf_label = "M15" if timeframe.lower() == "15m" else "H1"
+    chart_path = os.path.join(os.path.dirname(__file__), f"chart_{symbol_name.lower()}.png")
+    create_signal_chart(df=df, symbol_name=symbol_name, symbol_label=label, timeframe=timeframe, unit=item["unit"], predicted_direction=result["direction"], current_price=result["current_price"], tp=result["tp"], sl=result["sl"], output_path=chart_path)
+
+    if is_high_conf:
+        added, reason = add_new_signal(symbol=symbol_name, direction=result["direction"], entry_price=result["current_price"], tp=result["tp"], sl=result["sl"], time_str=time_str, timeframe=timeframe, atr=result.get("atr", 1.0))
+        if added:
+            print(f"-> {symbol_name}: 🚀 Bắn tín hiệu vào nhóm Telegram thành công! (Mã: {reason})")
+            _dispatch_telegram(chart_path, _build_signal_caption(item, result, tf_label))
+        else:
+            print(f"-> {symbol_name}: ⏸️ {reason}")
+        return
+
+    print(f"-> {symbol_name}: [Có cờ --force] Gửi ảnh phân tích Sideway.")
+    _dispatch_telegram(chart_path, _build_force_caption(item, result, tf_label))
+
+
+def _process_symbol(item, now_vn, manual_force):
+    symbol_name, ticker, label = item["name"], item["ticker"], item["label"]
+    timeframe, pred_len, period = item["timeframe"], item["predict_len"], item["period"]
+
+    market_open, market_msg = is_market_open(symbol_name, now_vn)
+    if not market_open:
+        print(f"[{symbol_name}] ⏸️ {market_msg} -> Tạm dừng quét & giữ yên lặng tuyệt đối, không gửi tin nhắn.")
+        return
+
+    if timeframe.lower() == "1h" and now_vn.minute >= 15 and not manual_force:
+        print(f"[{symbol_name} - 1H] Chưa đóng nến 1H (phút {now_vn.minute}) -> Chờ đến đầu tiếng tiếp theo.")
+        df_check = get_candles(ticker, timeframe="15m", period="2d", limit=24)
+        if df_check is not None and len(df_check) > 0:
+            last_c = df_check.iloc[-1]
+            update_open_signals(symbol_name, float(last_c["high"]), float(last_c["low"]), float(last_c["close"]), str(last_c["time"]), df=df_check)
+        return
+
+    print(f"\n--- Đang xử lý: {label} (Khung {timeframe.upper()}) ---")
+    df = get_candles(ticker, timeframe=timeframe, period=period, limit=config.CANDLE_LIMIT + 1)
+    if df is None or len(df) == 0:
+        print(f"[BỎ QUA] Không đủ nến cho {label}.")
+        return
+
+    latest = df.iloc[-1]
+    update_open_signals(symbol_name, float(latest["high"]), float(latest["low"]), float(latest["close"]), str(latest["time"]), df=df)
+
+    closed_df, live_price, _, had_forming = split_closed_and_live(
+        df, timeframe=timeframe, now_utc=now_vn.astimezone(timezone.utc),
+    )
+    if closed_df is None or len(closed_df) < 25:
+        print(f"[BỎ QUA] Không đủ nến đã đóng cho {label}.")
+        return
+    if had_forming:
+        print(f"-> [{symbol_name}] Đã tách nến đang chạy, AI đọc {len(closed_df)} nến đã đóng (Entry live: {live_price}).")
+
+    closed_time_str = str(closed_df.iloc[-1]["time"])
+    result = predict_future(closed_df, symbol_name, timeframe=timeframe, pred_len=pred_len, live_price=live_price)
+    print(f"-> Phân tích {symbol_name} ({timeframe}): {result['direction']} | Độ tin cậy: {result['confidence']}%")
+    _handle_symbol_result(item, closed_df, closed_time_str, result, manual_force)
+
+
+def run_single_cycle(manual_force=False, now_vn=None):
+    now_vn = now_vn or datetime.now(VN_TZ)
     print(f"\n[{now_vn.strftime('%Y-%m-%d %H:%M:%S')} VN] Bắt đầu chu kỳ quét nến...")
     if manual_force:
         print("⚡ [CHẾ ĐỘ ÉP BUỘC] Luôn gửi ảnh và phân tích kể cả khi Sideway.")
     else:
         print(f"🤖 [CHẠY TỰ ĐỘNG] Giữ im lặng khi Sideway/cuối tuần. Chỉ gửi tin nhắn khi có kèo đẹp độ tin cậy >= {config.CONFIDENCE_THRESHOLD}%.")
 
-    # 1. Kiểm tra gửi báo cáo 6:00 sáng
-    check_and_send_daily_report_if_due()
-
-    # 2. Quét lần lượt từng sản phẩm theo khung thời gian riêng:
-    # - BTCUSD: Quét mỗi 15 phút (M15)
-    # - XAUUSD: Quét theo nến 1 Giờ (H1 - vào đầu mỗi tiếng)
+    check_and_send_daily_report_if_due(now_vn=now_vn)
     for item in config.SYMBOLS:
-        symbol_name = item['name']
-        ticker = item['ticker']
-        label = item['label']
-        timeframe = item['timeframe']
-        unit = item['unit']
-        pred_len = item['predict_len']
-        period = item['period']
+        _process_symbol(item, now_vn, manual_force)
 
-        # KIỂM TRA GIỜ MỞ/ĐÓNG CỬA THỊ TRƯỜNG (Áp dụng riêng cho Vàng XAUUSD)
-        # Cuối tuần hoặc ngoài giờ giao dịch: giữ im lặng tuyệt đối, không gửi tin nhắn
-        market_open, market_status_msg = is_market_open(symbol_name, now_vn)
-        if not market_open:
-            print(f"[{symbol_name}] ⏸️ {market_status_msg} -> Tạm dừng quét & giữ yên lặng tuyệt đối, không gửi tin nhắn.")
-            continue
-
-        # XỬ LÝ KHUNG NẾN 1H:
-        is_top_of_hour = now_vn.minute < 16
-        if timeframe.lower() == "1h" and not is_top_of_hour and not manual_force:
-            print(f"[{symbol_name} - 1H] Chưa đóng nến 1H (phút {now_vn.minute}) -> Chờ đến đầu tiếng tiếp theo.")
-            df_check = get_candles(ticker, timeframe="15m", period="2d", limit=5)
-            if df_check is not None and len(df_check) > 0:
-                last_c = df_check.iloc[-1]
-                update_open_signals(symbol_name, float(last_c['high']), float(last_c['low']), float(last_c['close']), str(last_c['time']), df=df_check)
-            continue
-
-        print(f"\n--- Đang xử lý: {label} (Khung {timeframe.upper()}) ---")
-        df = get_candles(ticker, timeframe=timeframe, period=period)
-        if df is None or len(df) < 25:
-            print(f"[BỎ QUA] Không đủ nến cho {label}.")
-            continue
-
-        latest_candle = df.iloc[-1]
-        current_time_str = str(latest_candle['time'])
-        current_high = float(latest_candle['high'])
-        current_low = float(latest_candle['low'])
-        current_close = float(latest_candle['close'])
-
-        # Cập nhật xem các lệnh trước đó có chạm TP/SL không
-        update_open_signals(symbol_name, current_high, current_low, current_close, current_time_str, df=df)
-
-        # Phân tích dự báo bằng Kronos-base
-        result = predict_future(df, symbol_name, timeframe=timeframe, pred_len=pred_len)
-        print(f"-> Phân tích {symbol_name} ({timeframe}): {result['direction']} | Độ tin cậy: {result['confidence']}%")
-
-        tf_label = "M15" if timeframe.lower() == "15m" else "H1"
-        is_high_confidence = (result['confidence'] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result['direction'])
-        
-        # Tiêu đề nhận định riêng theo từng sản phẩm
-        nhan_dinh_title = "Nhận định của Vàng" if symbol_name == "XAUUSD" else "Nhận định của BTC"
-
-        # Luôn vẽ ảnh biểu đồ nến với tiêu đề LVQ Std SIGNAL
-        chart_filename = f"chart_{symbol_name.lower()}.png"
-        chart_path = os.path.join(os.path.dirname(__file__), chart_filename)
-        create_signal_chart(
-            df=df,
-            symbol_name=symbol_name,
-            symbol_label=label,
-            timeframe=timeframe,
-            unit=unit,
-            predicted_direction=result['direction'],
-            current_price=result['current_price'],
-            tp=result['tp'],
-            sl=result['sl'],
-            output_path=chart_path
-        )
-
-        # =========================================================================
-        # TRƯỜNG HỢP 1: Có kèo đẹp (Độ tin cậy >= 70% và không Sideway)
-        # =========================================================================
-        if is_high_confidence:
-            added, reason = add_new_signal(
-                symbol=symbol_name,
-                direction=result['direction'],
-                entry_price=result['current_price'],
-                tp=result['tp'],
-                sl=result['sl'],
-                time_str=current_time_str,
-                timeframe=timeframe,
-                atr=result.get('atr', 1.0)
-            )
-
-            if added:
-                print(f"-> {symbol_name}: 🚀 Bắn tín hiệu vào nhóm Telegram thành công! (Mã: {reason})")
-                adx_info = f" | *ADX:* `{result.get('adx', 0):.1f}`" if 'adx' in result else ""
-                caption = (
-                    f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {label}*\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
-                    f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
-                    f"🚀 *Tín hiệu:* *{result['direction']}*\n"
-                    f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%)\n"
-                    f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({pred_len} nến tới)\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
-                    f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
-                    f"⚡ *Biến động ATR:* `{result['atr']}`{adx_info}\n\n"
-                    f"💡 *{nhan_dinh_title}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
-                    "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
-                )
-
-                if os.path.exists(chart_path):
-                    send_telegram_photo(chart_path, caption)
-                else:
-                    send_telegram_message(caption)
-            else:
-                print(f"-> {symbol_name}: ⏸️ {reason}")
-
-        # =========================================================================
-        # TRƯỜNG HỢP 2: Bấm tay có cờ --force (chỉ dùng khi muốn test thủ công)
-        # =========================================================================
-        elif manual_force:
-            print(f"-> {symbol_name}: [Có cờ --force] Gửi ảnh phân tích Sideway.")
-            caption = (
-                f"📊 *[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {label}*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 *Sản phẩm:* `{symbol_name}` | *Khung:* `{tf_label}`\n"
-                f"💰 *Giá hiện tại:* `{result['current_price']} {unit}`\n"
-                f"🎯 *Trạng thái:* *{result['direction']}*\n"
-                f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ {config.CONFIDENCE_THRESHOLD}% để vào lệnh)*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"💡 *{nhan_dinh_title}:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!"
-            )
-
-            if os.path.exists(chart_path):
-                send_telegram_photo(chart_path, caption)
-            else:
-                send_telegram_message(caption)
-
-        # =========================================================================
-        # TRƯỜNG HỢP 3: Thị trường Sideway hoặc độ tin cậy < 70% khi chạy tự động
-        # -> Giữ yên lặng tuyệt đối, KHÔNG gửi tin nhắn làm phiền nhóm
-        # =========================================================================
-        else:
-            print(f"-> {symbol_name}: Độ tin cậy {result['confidence']}% (< {config.CONFIDENCE_THRESHOLD}%) hoặc Sideway -> Giữ yên lặng tuyệt đối, không gửi tin nhắn.")
 
 def main():
     parser = argparse.ArgumentParser(description="VÀNG Đánh BTC Signal Bot")
@@ -211,42 +184,30 @@ def main():
     args = parser.parse_args()
 
     if args.test:
-        print("Đang gửi tin nhắn thử nghiệm vào nhóm Telegram...")
         test_telegram()
         return
-
     if args.report:
-        print("Đang gửi báo cáo hiệu suất ngày hôm qua...")
-        report_text = generate_daily_report()
-        send_telegram_message(report_text)
+        send_telegram_message(generate_daily_report())
         return
-
     if args.report_week:
-        print("Đang gửi báo cáo tổng kết tuần...")
-        report_text = generate_weekly_report()
-        send_telegram_message(report_text)
+        send_telegram_message(generate_weekly_report())
         return
-
-    is_force = args.force
-
     if args.once:
-        print(f"Chạy quét 1 chu kỳ (Single Run Mode | Chế độ ép buộc gửi tin nhắn: {is_force})...")
-        run_single_cycle(manual_force=is_force)
+        run_single_cycle(manual_force=args.force)
         return
 
     print("==================================================")
     print("   [VÀNG Đánh BTC] BOT: BTC (M15) & VÀNG (1H)     ")
-    print(f"   - BTCUSD: Khung M15 (quét mỗi 15 phút)         ")
-    print(f"   - XAUUSD: Khung H1  (quét đầu mỗi tiếng)       ")
-    print(f"   - Báo cáo định kỳ: 06:00 Sáng hàng ngày        ")
+    print("   - BTCUSD: Khung M15 (quét mỗi 15 phút)         ")
+    print("   - XAUUSD: Khung H1  (quét đầu mỗi tiếng)       ")
+    print("   - Báo cáo định kỳ: 06:00 Sáng hàng ngày        ")
     print("==================================================")
-    
     run_single_cycle(manual_force=False)
     schedule.every(15).minutes.do(lambda: run_single_cycle(manual_force=False))
-
     while True:
         schedule.run_pending()
         time.sleep(15)
+
 
 if __name__ == "__main__":
     main()

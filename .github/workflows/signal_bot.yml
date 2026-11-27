@@ -23,6 +23,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: signal-bot-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   run-signal-bot:
     runs-on: ubuntu-latest
@@ -36,7 +40,7 @@ jobs:
       - name: 🐍 Cài đặt môi trường Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: ⚡ Cache Hugging Face Model Weights (Kronos-base)
@@ -84,6 +88,11 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           if [ -f signals_history.json ]; then
             git add signals_history.json
-            git commit -m "chore: lưu lịch sử tín hiệu và trạng thái TP/SL [skip ci]" || echo "Không có thay đổi lịch sử"
-            git push origin main || echo "Không thể push hoặc đã là mới nhất"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: lưu lịch sử tín hiệu và trạng thái TP/SL [skip ci]"
+              git pull --rebase origin main
+              git push origin main
+            else
+              echo "Không có thay đổi lịch sử"
+            fi
           fi

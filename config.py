@@ -51,9 +51,10 @@ ATR_SL_MULTIPLIER = 1.5    # SL = 1.5 * ATR (nới rộng chống quét râu n�
 MIN_RR_RATIO = 1.2         # Tỷ lệ R:R tối thiểu (TP >= 1.2 * khoảng cách SL để không bị giảm R:R)
 
 # Cấu hình Quản lý Vị thế & Chặn nhồi lệnh
-ALLOW_MULTIPLE_SIGNALS = False     # Bật chặn nhồi lệnh bừa bãi liên tục
+ALLOW_OPPOSITE_HEDGING = False     # Block opening opposite direction while a signal is OPEN
 MAX_OPEN_SIGNALS_PER_SYMBOL = 2    # Tối đa 2 lệnh riêng biệt cùng lúc cho mỗi cặp
 MIN_ENTRY_DISTANCE_ATR = 0.8       # Lệnh thứ 2 chỉ được mở nếu Entry đẹp hơn ít nhất 0.8 * ATR
+MAX_ENTRY_SLIPPAGE_ATR = 0.35      # Block signal if live price drifted beyond 0.35 * ATR from closed bar
 
 # Bộ lọc Kỹ thuật nâng cao
 USE_TREND_FILTER = True            # Bộ lọc xu hướng EMA 50 & 200 (không đánh ngược sóng lớn)
