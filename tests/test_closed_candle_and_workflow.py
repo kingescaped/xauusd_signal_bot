@@ -149,6 +149,13 @@ class TestClosedCandleAndWorkflow(unittest.TestCase):
         ):
             self.assertIn(snippet, yml)
 
+    def test_requirements_pins_pandas_v2_and_six(self):
+        req_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "requirements.txt")
+        with open(req_path, "r", encoding="utf-8") as f:
+            reqs = f.read()
+        self.assertIn("pandas>=2.0.0,<3.0.0", reqs)
+        self.assertIn("six>=1.16.0", reqs)
+
 
 if __name__ == "__main__":
     unittest.main()
