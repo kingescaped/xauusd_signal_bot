@@ -8,7 +8,15 @@ import unittest
 from unittest import mock
 import urllib.error
 
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tests.stubs import install_missing_stubs
+
+install_missing_stubs()
+
 import kaggle_push
+import telegram_notifier
 
 
 class _FakeHttpResponse:
@@ -133,6 +141,41 @@ class TestKaggleMonthlyPush(unittest.TestCase):
             if file_path.suffix in (".py", ".yml", ".ipynb", ".md", ".json", ".bat"):
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
                 self.assertIsNone(token_pattern.search(content), f"Real Kaggle token leaked in {file_path}")
+
+    def test_personal_telegram_dm_resolves_explicit_admin_group_and_updates(self):
+        fake_admins = {"ok": True, "result": [{"user": {"id": 555666777, "username": "KingEscaped"}}]}
+        fake_updates = {
+            "ok": True,
+            "result": [{"message": {"from": {"id": 987654321, "username": "KingEscaped"}, "chat": {"id": 987654321}}}],
+        }
+        sent_payloads = []
+
+        class _Resp:
+            def __init__(self, data):
+                self.status_code = 200
+                self._data = data
+
+            def json(self):
+                return self._data
+
+        def fake_get(url, params=None, timeout=10):
+            if "getChatAdministrators" in url and (params or {}).get("chat_id") == "-100111":
+                return _Resp(fake_admins)
+            return _Resp(fake_updates)
+
+        with (
+            mock.patch.object(telegram_notifier.config, "TELEGRAM_BOT_TOKEN", ""),
+            mock.patch.object(telegram_notifier.config, "TELEGRAM_GROUP_ID", ""),
+            mock.patch.dict(os.environ, {"TELEGRAM_ADMIN_ID": "", "TELEGRAM_BOT_TOKEN": "env_should_not_leak"}, clear=False),
+            mock.patch.object(telegram_notifier.requests, "get", side_effect=fake_get),
+            mock.patch.object(telegram_notifier.requests, "post", side_effect=lambda url, json=None, timeout=10: (sent_payloads.append(json), _Resp({"ok": True}))[1]),
+        ):
+            self.assertFalse(telegram_notifier.send_telegram_message("blocked when config empty"))
+            self.assertTrue(telegram_notifier.send_telegram_direct_message("<b>Admin</b>", target_username="@kingescaped", bot_token="bot_tok", group_id="-100111"))
+            self.assertTrue(telegram_notifier.send_telegram_direct_message("<b>Updates</b>", target_username="@kingescaped", bot_token="bot_tok"))
+            self.assertTrue(telegram_notifier.send_telegram_direct_message("<b>Explicit</b>", target_username="@kingescaped", chat_id="123456789", bot_token="bot_tok"))
+
+        self.assertEqual([p["chat_id"] for p in sent_payloads], ["555666777", "987654321", "123456789"])
 
 
 if __name__ == "__main__":

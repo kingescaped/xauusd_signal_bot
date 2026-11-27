@@ -312,7 +312,7 @@ def install_missing_stubs():
     _install_torch_stub()
     simple_stubs = {
         "yfinance": {"download": lambda *a, **k: FakeDataFrame({})},
-        "requests": {"post": lambda *a, **k: None, "RequestException": Exception},
+        "requests": {"get": lambda *a, **k: None, "post": lambda *a, **k: None, "RequestException": Exception},
         "schedule": {"every": lambda *a, **k: types.SimpleNamespace(minutes=types.SimpleNamespace(do=lambda fn: None)), "run_pending": lambda: None},
         "matplotlib": {"use": lambda *a, **k: None, "__path__": []},
         "matplotlib.pyplot": {"close": lambda *a, **k: None},
