@@ -4,7 +4,7 @@ on:
   # Chạy tự động mỗi 15 phút (Đã đóng lại vì dùng cron-job.org gọi chuẩn xác qua API để tránh trùng lặp)
   # schedule:
   #   - cron: '*/15 * * * *'
-  
+
   # Cho phép bấm nút "Run workflow" hoặc gọi tự động từ webhook ngoài (cron-job.org)
   workflow_dispatch:
     inputs:
@@ -17,6 +17,8 @@ on:
           - 'once'        # Quét nến bình thường (mặc định)
           - 'report'      # Gửi ngay Báo cáo ngày hôm qua
           - 'report-week' # Gửi ngay Báo cáo tổng kết tuần
+          - 'train-meta'  # Huấn luyện lại Meta-Model lọc kèo ngay lập tức
+          - 'sync-hf'     # Đồng bộ Kronos-base sang repo Private Hugging Face
           - 'force'       # Ép buộc gửi ảnh biểu đồ kể cả lúc Sideway
           - 'test'        # Thử nghiệm kết nối Telegram
 
@@ -43,11 +45,43 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: ⚡ Cache Hugging Face Model Weights (Kronos-base)
+      - name: 🔑 Xác định phiên bản trọng số Hugging Face (btc-m15 & xau-h1)
+        id: hf-rev
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          REV_KEY=$(python - <<'PY'
+          import hashlib, json, os, urllib.request
+          from datetime import datetime, timezone
+
+          token = os.getenv("HF_TOKEN", "").strip()
+          repo = "kingescaped/lvq-std-BOT"
+          shas = []
+          for branch in ("btc-m15", "xau-h1", "main"):
+              url = f"https://huggingface.co/api/models/{repo}/revision/{branch}"
+              req = urllib.request.Request(url)
+              if token:
+                  req.add_header("Authorization", f"Bearer {token}")
+              try:
+                  with urllib.request.urlopen(req, timeout=5) as resp:
+                      data = json.loads(resp.read().decode("utf-8"))
+                      shas.append(f"{branch}:{data.get('sha', '')[:10]}")
+              except Exception:
+                  shas.append(f"{branch}:fallback")
+          raw = "|".join(shas) + "|" + datetime.now(timezone.utc).strftime("%Y-%m")
+          print(hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12])
+          PY
+          )
+          echo "rev_key=${REV_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: ⚡ Cache Hugging Face Model Weights (lvq-std-BOT & Kronos-base)
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/hub
-          key: ${{ runner.os }}-kronos-base-weights-v1
+          key: ${{ runner.os }}-kronos-weights-v2-${{ steps.hf-rev.outputs.rev_key }}
+          restore-keys: |
+            ${{ runner.os }}-kronos-weights-v2-
+            ${{ runner.os }}-kronos-base-weights-v1
 
       - name: 📦 Cài đặt PyTorch CPU & các thư viện AI
         run: |
@@ -71,6 +105,12 @@ jobs:
           elif [ "$ACTION" = "report-week" ]; then
             echo "🏆 Chạy báo cáo tổng kết tuần..."
             python main.py --report-week
+          elif [ "$ACTION" = "train-meta" ]; then
+            echo "🧠 Huấn luyện lại Meta-Model lọc kèo từ lịch sử lệnh sạch..."
+            python main.py --train-meta
+          elif [ "$ACTION" = "sync-hf" ]; then
+            echo "☁️ Đồng bộ Kronos-base sang repo Private kingescaped/lvq-std-BOT..."
+            python main.py --sync-hf
           elif [ "$ACTION" = "force" ]; then
             echo "⚡ Ép buộc gửi ảnh biểu đồ phân tích..."
             python main.py --once --force
@@ -82,13 +122,14 @@ jobs:
             python main.py --once
           fi
 
-      - name: 💾 Lưu lại lịch sử tín hiệu TP/SL vào Repository
+      - name: 💾 Lưu lại lịch sử tín hiệu, trạng thái & Meta-Model vào Repository
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -f signals_history.json ] || [ -f bot_state.json ]; then
+          if [ -f signals_history.json ] || [ -f bot_state.json ] || [ -f meta_model_state.json ]; then
             [ -f signals_history.json ] && git add signals_history.json || true
             [ -f bot_state.json ] && git add bot_state.json || true
+            [ -f meta_model_state.json ] && git add meta_model_state.json || true
             if ! git diff --cached --quiet; then
               git commit -m "chore: lưu lịch sử tín hiệu và trạng thái TP/SL [skip ci]"
               git pull --rebase origin main || (git rebase --abort 2>/dev/null || true; git pull --no-rebase --no-edit -X ours origin main)

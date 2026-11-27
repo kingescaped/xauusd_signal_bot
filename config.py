@@ -28,8 +28,9 @@ _load_local_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "")
 
-KRONOS_MODEL_NAME = "NeoQuasar/Kronos-base"
-KRONOS_TOKENIZER_NAME = "NeoQuasar/Kronos-Tokenizer-base"
+KRONOS_MODEL_NAME = os.getenv("KRONOS_MODEL_NAME", "kingescaped/lvq-std-BOT")
+KRONOS_FALLBACK_MODEL_NAME = os.getenv("KRONOS_FALLBACK_MODEL_NAME", "NeoQuasar/Kronos-base")
+KRONOS_TOKENIZER_NAME = os.getenv("KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
 hf_token_val = os.getenv("HF_TOKEN", "").strip()
 HF_TOKEN = hf_token_val if hf_token_val else None
 if HF_TOKEN:
@@ -44,6 +45,7 @@ SYMBOLS = [
         "ticker": "BTC-USD",
         "label": "BITCOIN (BTCUSD)",
         "timeframe": "15m",
+        "model_revision": "btc-m15",
         "unit": "$",
         "digits": 2,
         "threshold": 0.55,
@@ -56,6 +58,7 @@ SYMBOLS = [
         "ticker": "GC=F",
         "label": "VÀNG (XAUUSD)",
         "timeframe": "1h",
+        "model_revision": "xau-h1",
         "unit": "$",
         "digits": 2,
         "threshold": 0.30,
@@ -75,7 +78,11 @@ GOLD_THRESHOLD = 0.30
 KRONOS_SAMPLE_COUNT = 5
 KRONOS_TEMPERATURE = 0.6
 KRONOS_TOP_P = 0.9
-STRATEGY_VERSION = "v3.3-p1-audit"
+STRATEGY_VERSION = "v4.0-dual-kronos-meta"
+
+META_MIN_CLEAN_TRADES = 100
+META_WIN_PROB_THRESHOLD = 0.52
+META_CLEAN_VERSION_PREFIXES = ("v3.3", "v4.")
 
 ATR_SL_MULTIPLIER = 1.5
 MIN_RR_RATIO = 1.2

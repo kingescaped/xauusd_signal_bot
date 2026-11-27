@@ -384,7 +384,7 @@ class MultiHeadCrossAttentionWithRoPE(nn.Module):
         else:
             attn_mask = None
 
-        is_causal_flag = self.training
+        is_causal_flag = self.training or (q_len == seq_len and q_len > 1)
 
         attn_output = F.scaled_dot_product_attention(
             q, k, v,

@@ -12,6 +12,7 @@ _METADATA_KEYS = (
     "confidence", "pct_change", "pred_end_price", "pred_high", "pred_low",
     "ref_close", "atr", "adx", "ema_50", "ema_200",
     "sample_agreement", "sample_std_pct", "forecast_window_vn", "strategy_version",
+    "model_source", "meta_win_prob", "meta_filter_active",
 )
 
 

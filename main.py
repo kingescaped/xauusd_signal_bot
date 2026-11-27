@@ -9,6 +9,7 @@ import config
 from bot_state import has_sent_report, mark_report_sent
 from chart_visualizer import create_signal_chart
 from fetch_data import get_candles, split_closed_and_live
+from hf_repo_sync import sync_base_to_private_repo
 from history_tracker import (
     add_new_signal,
     generate_daily_report,
@@ -20,7 +21,18 @@ from history_tracker import (
 )
 from kronos_predictor import predict_future
 from market_time import VN_TZ, format_timeframe_label, is_market_open
+from meta_model import evaluate_meta_signal, train_weekly_meta_model
 from telegram_notifier import send_telegram_message, send_telegram_photo, test_telegram
+
+
+def run_weekly_meta_training():
+    state = train_weekly_meta_model(load_history())
+    mode_txt = "ĐÃ BẬT LỌC CHẶN (<52%)" if state.get("filter_active") else "GHI NHẬN CHỜ ĐỦ >=100 LỆNH SẠCH"
+    print(
+        f"[META-MODEL TUẦN] Đã cập nhật bộ lọc: {state.get('clean_trade_count', 0)}/"
+        f"{state.get('min_clean_trades', 100)} lệnh sạch -> Trạng thái: {mode_txt}"
+    )
+    return state
 
 
 def check_and_send_daily_report_if_due(now_vn=None):
@@ -37,6 +49,10 @@ def check_and_send_daily_report_if_due(now_vn=None):
 
     if now_vn.weekday() == 5 and not has_sent_report("weekly_report", today_key):
         print(f"[{now_vn.strftime('%H:%M:%S')}] Sáng Thứ Bảy -> Đang tổng hợp báo cáo tổng kết tuần...")
+        try:
+            run_weekly_meta_training()
+        except Exception as exc:
+            print(f"[CẢNH BÁO META-MODEL] Huấn luyện tuần gặp lỗi nhẹ: {exc}")
         if send_telegram_message(generate_weekly_report()):
             mark_report_sent("weekly_report", today_key)
             print("Đã gửi báo cáo tổng kết tuần vào nhóm!")
@@ -63,6 +79,7 @@ def _build_signal_caption(item, result, tf_label, order_num=1):
     digits = int(item.get("digits", 2))
     adx_info = f" | <b>ADX:</b> <code>{result.get('adx', 0):.1f}</code>" if "adx" in result else ""
     agree_info = f" | Đồng thuận: <code>{result['sample_agreement']}%</code>" if "sample_agreement" in result else ""
+    meta_info = f"\n🧠 <b>Xác suất thắng Meta-AI:</b> <code>{result['meta_win_prob']}%</code>" if "meta_win_prob" in result else ""
     win_vn = result.get("forecast_window_vn") or ""
     horizon_txt = f"{item['predict_len']} nến tới: <code>{html.escape(win_vn)}</code>" if win_vn else f"{item['predict_len']} nến tới"
     dca_line = "\n🔄 <b>Vị thế:</b> <b>LỆNH #2 (DCA cùng xu hướng — lưu ý chia khối lượng)</b>" if order_num > 1 else ""
@@ -73,7 +90,7 @@ def _build_signal_caption(item, result, tf_label, order_num=1):
         f"📊 <b>Sản phẩm:</b> <code>{html.escape(item['name'])}</code> | <b>Khung:</b> <code>{html.escape(tf_label)}</code>{dca_line}\n"
         f"💰 <b>Giá vào (Entry):</b> <code>{result['current_price']:.{digits}f} {unit}</code>\n"
         f"🚀 <b>Tín hiệu:</b> <b>{html.escape(result['direction'])}</b>\n"
-        f"📈 <b>Độ tin cậy:</b> <code>{result['confidence']}%</code> (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%){agree_info}\n"
+        f"📈 <b>Độ tin cậy:</b> <code>{result['confidence']}%</code> (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%){agree_info}{meta_info}\n"
         f"🔮 <b>Kỳ vọng:</b> <code>{result['pct_change']:+.2f}%</code> ({horizon_txt})\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"🎯 <b>Mục tiêu (TP):</b> <code>{result['tp']:.{digits}f} {unit}</code>\n"
@@ -115,6 +132,44 @@ def _render_symbol_chart(item, df, result):
     )
 
 
+def _check_meta_gate(symbol_name, result):
+    try:
+        hist = load_history()
+        next_order = sum(1 for s in hist if s.get("symbol") == symbol_name and s.get("status") == "OPEN") + 1
+    except Exception:
+        hist, next_order = None, 1
+    decision = evaluate_meta_signal(symbol_name, result, history=hist, order_num=next_order)
+    mode_label = "LỌC CHẶN" if decision.filter_active else "GHI NHẬN"
+    print(
+        f"-> {symbol_name}: [META-MODEL {mode_label}] Win Prob = {decision.win_prob * 100:.1f}% "
+        f"({decision.clean_trades}/{getattr(config, 'META_MIN_CLEAN_TRADES', 100)} lệnh sạch)"
+    )
+    return decision
+
+
+def _persist_and_dispatch_signal(item, df, time_str, result, manual_force):
+    symbol_name, timeframe = item["name"], item["timeframe"]
+    tf_label = format_timeframe_label(timeframe)
+    added, reason = add_new_signal(
+        symbol=symbol_name, direction=result["direction"], entry_price=result["current_price"],
+        tp=result["tp"], sl=result["sl"], time_str=time_str, timeframe=timeframe,
+        atr=result.get("atr", 1.0), metadata=result,
+    )
+    if added:
+        order_num = _resolve_order_num_for_signal(reason)
+        rendered = _render_symbol_chart(item, df, result)
+        if _dispatch_telegram(rendered, _build_signal_caption(item, result, tf_label, order_num=order_num)):
+            print(f"-> {symbol_name}: 🚀 Bắn tín hiệu #{order_num} vào nhóm Telegram thành công! (Mã: {reason})")
+        else:
+            remove_signal(reason)
+            print(f"-> {symbol_name}: [LỖI] Gửi Telegram thất bại -> Đã hoàn tác không lưu tín hiệu {reason}.")
+        return
+    print(f"-> {symbol_name}: ⏸️ {reason}")
+    if manual_force:
+        rendered = _render_symbol_chart(item, df, result)
+        _dispatch_telegram(rendered, _build_force_caption(item, result, tf_label, block_note=reason))
+
+
 def _handle_symbol_result(item, df, time_str, result, manual_force=False):
     symbol_name, timeframe = item["name"], item["timeframe"]
     allow_persist = not bool(result.get("_off_schedule_h1", False))
@@ -127,25 +182,14 @@ def _handle_symbol_result(item, df, time_str, result, manual_force=False):
 
     tf_label = format_timeframe_label(timeframe)
     if is_high_conf and allow_persist:
-        added, reason = add_new_signal(
-            symbol=symbol_name, direction=result["direction"], entry_price=result["current_price"],
-            tp=result["tp"], sl=result["sl"], time_str=time_str, timeframe=timeframe,
-            atr=result.get("atr", 1.0), metadata=result,
-        )
-        if added:
-            order_num = _resolve_order_num_for_signal(reason)
-            rendered = _render_symbol_chart(item, df, result)
-            if _dispatch_telegram(rendered, _build_signal_caption(item, result, tf_label, order_num=order_num)):
-                print(f"-> {symbol_name}: 🚀 Bắn tín hiệu #{order_num} vào nhóm Telegram thành công! (Mã: {reason})")
-            else:
-                remove_signal(reason)
-                print(f"-> {symbol_name}: [LỖI] Gửi Telegram thất bại -> Đã hoàn tác không lưu tín hiệu {reason}.")
+        meta_decision = _check_meta_gate(symbol_name, result)
+        if meta_decision.blocked:
+            print(f"-> {symbol_name}: 🛡️ {meta_decision.reason}")
+            if manual_force:
+                rendered = _render_symbol_chart(item, df, result)
+                _dispatch_telegram(rendered, _build_force_caption(item, result, tf_label, block_note=meta_decision.reason))
             return
-        print(f"-> {symbol_name}: ⏸️ {reason}")
-        if not manual_force:
-            return
-        rendered = _render_symbol_chart(item, df, result)
-        _dispatch_telegram(rendered, _build_force_caption(item, result, tf_label, block_note=reason))
+        _persist_and_dispatch_signal(item, df, time_str, result, manual_force)
         return
 
     note = "Đang kiểm tra ngoài khung đóng nến H1" if (is_high_conf and not allow_persist) else None
@@ -234,15 +278,20 @@ def run_single_cycle(manual_force=False, now_vn=None):
         print(f"[LỖI BÁO CÁO] Không thể kiểm tra/gửi báo cáo định kỳ: {exc}")
 
 
-def main():
+def _build_cli_parser():
     parser = argparse.ArgumentParser(description="VÀNG Đánh BTC Signal Bot")
     parser.add_argument("--test", action="store_true", help="Kiểm tra kết nối Telegram vào nhóm")
     parser.add_argument("--report", action="store_true", help="Gửi ngay báo cáo hiệu suất ngày hôm qua vào nhóm")
     parser.add_argument("--report-week", action="store_true", help="Gửi ngay báo cáo tổng kết tuần (Thứ 2 - Thứ 6) vào nhóm")
+    parser.add_argument("--train-meta", action="store_true", help="Huấn luyện lại Meta-Model lọc kèo từ lịch sử lệnh sạch")
+    parser.add_argument("--sync-hf", action="store_true", help="Đồng bộ Kronos-base sang repo Private Hugging Face và tạo nhánh")
     parser.add_argument("--once", action="store_true", help="Chạy quét 1 chu kỳ ngay bây giờ")
     parser.add_argument("--force", action="store_true", help="Ép buộc gửi ảnh biểu đồ kể cả lúc Sideway (cho chế độ bấm tay)")
-    args = parser.parse_args()
+    return parser
 
+
+def main():
+    args = _build_cli_parser().parse_args()
     if args.test:
         if not test_telegram():
             sys.exit(1)
@@ -254,6 +303,12 @@ def main():
     if args.report_week:
         if not send_telegram_message(generate_weekly_report()):
             sys.exit(1)
+        return
+    if args.train_meta:
+        run_weekly_meta_training()
+        return
+    if args.sync_hf:
+        sync_base_to_private_repo()
         return
     if args.once:
         run_single_cycle(manual_force=args.force)

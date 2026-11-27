@@ -4,7 +4,9 @@ import sys
 import numpy as np
 import pandas as pd
 import config
+from kronos_loader import load_predictor_for_target, reset_loader_cache, resolve_hf_token
 from market_time import build_future_timestamps, format_forecast_window_vn, to_utc_datetime
+from meta_model import evaluate_meta_signal
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -21,6 +23,7 @@ class SymbolSpec:
     digits: int
     threshold: float
     atr_fallback: float
+    model_revision: str = "main"
 
 
 @dataclass(frozen=True)
@@ -49,57 +52,30 @@ class RawForecast:
 
 
 def _resolve_hf_token():
-    hf_token = getattr(config, "HF_TOKEN", None) or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
-    hf_token = str(hf_token).strip() if hf_token else ""
-    if not hf_token:
-        os.environ.pop("HF_TOKEN", None)
-        os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
-        return None
-    os.environ["HF_TOKEN"] = hf_token
-    os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
-    try:
-        import huggingface_hub
-        huggingface_hub.login(token=hf_token, add_to_git_credential=False)
-    except Exception:
-        pass
-    return hf_token
+    return resolve_hf_token()
 
 
-def load_kronos_base():
+def load_kronos_base(symbol_name=None, revision=None):
     global _GLOBAL_PREDICTOR, _MODEL_LOADED
-    if _GLOBAL_PREDICTOR is not None:
+    if _GLOBAL_PREDICTOR is None:
+        reset_loader_cache()
+    elif symbol_name is None and revision is None:
         return _GLOBAL_PREDICTOR
 
-    try:
-        print("\n[AI KRONOS] Đang khởi động mô hình Kronos-base...")
-        from model import Kronos, KronosPredictor, KronosTokenizer
-
-        tokenizer_name = getattr(config, "KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
-        model_name = getattr(config, "KRONOS_MODEL_NAME", "NeoQuasar/Kronos-base")
-        hf_token = _resolve_hf_token()
-
-        print(f"[AI KRONOS] Tải Tokenizer: {tokenizer_name}")
-        tokenizer = KronosTokenizer.from_pretrained(tokenizer_name, token=hf_token)
-        tokenizer.eval()
-
-        print(f"[AI KRONOS] Tải Mô hình: {model_name}")
-        model = Kronos.from_pretrained(model_name, token=hf_token)
-        model.eval()
-
-        _GLOBAL_PREDICTOR = KronosPredictor(model=model, tokenizer=tokenizer, device="cpu", max_context=512)
+    predictor = load_predictor_for_target(symbol_name=symbol_name, revision=revision)
+    if predictor is not None:
+        _GLOBAL_PREDICTOR = predictor
         _MODEL_LOADED = True
-        print("[AI KRONOS] Đã nạp thành công Kronos-base vào bộ nhớ!\n")
-        return _GLOBAL_PREDICTOR
-    except Exception as e:
-        print(f"[CẢNH BÁO AI] Không nạp được Kronos-base ({e}). Tạm dừng bắn tín hiệu tự động.")
+    else:
         _MODEL_LOADED = False
-        return None
+    return predictor
 
 
 def _get_symbol_spec(symbol_name, timeframe):
     is_gold = timeframe.lower() == "1h" or symbol_name == "XAUUSD"
     default_thresh = getattr(config, "GOLD_THRESHOLD", 0.30) if is_gold else getattr(config, "BTC_THRESHOLD", 0.55)
     default_atr = 5.0 if is_gold else 150.0
+    default_rev = "xau-h1" if is_gold else "btc-m15"
     for item in getattr(config, "SYMBOLS", []):
         if item.get("name") == symbol_name:
             return SymbolSpec(
@@ -108,8 +84,9 @@ def _get_symbol_spec(symbol_name, timeframe):
                 digits=int(item.get("digits", 2)),
                 threshold=float(item.get("threshold", default_thresh)),
                 atr_fallback=float(item.get("atr_fallback", default_atr)),
+                model_revision=str(item.get("model_revision") or default_rev),
             )
-    return SymbolSpec(symbol_name, timeframe, 2, float(default_thresh), default_atr)
+    return SymbolSpec(symbol_name, timeframe, 2, float(default_thresh), default_atr, default_rev)
 
 
 def calculate_volatility(df, window=14, digits=2, fallback=5.0):
@@ -284,7 +261,7 @@ def _build_no_ai_response(spec, ctx):
         "pred_end_price": round(ctx.ref_close, d), "pred_high": round(ctx.ref_close, d), "pred_low": round(ctx.ref_close, d),
         "adx": ctx.adx, "ema_50": round(ctx.ema_50, d), "ema_200": round(ctx.ema_200, d),
         "sample_agreement": 0.0, "sample_std_pct": 0.0, "forecast_window_vn": "",
-        "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.3-p1-audit"),
+        "strategy_version": getattr(config, "STRATEGY_VERSION", "v4.0-dual-kronos-meta"),
     }
 
 
@@ -300,6 +277,21 @@ def _build_market_context(clean_df, spec, live_price):
     return MarketContext(ref_close, entry_price, atr, sl_dist, min_tp_dist, adx_val, ema_50, ema_200)
 
 
+def _attach_meta_score(symbol_name, payload):
+    if "SIDEWAY" in payload["direction"]:
+        return payload
+    try:
+        from history_tracker import load_history
+        hist = load_history()
+        open_cnt = sum(1 for s in hist if s.get("symbol") == symbol_name and s.get("status") == "OPEN")
+    except Exception:
+        hist, open_cnt = None, 0
+    decision = evaluate_meta_signal(symbol_name, payload, history=hist, order_num=open_cnt + 1)
+    payload["meta_win_prob"] = round(decision.win_prob * 100.0, 1)
+    payload["meta_filter_active"] = decision.filter_active
+    return payload
+
+
 def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=None):
     spec = _get_symbol_spec(symbol_name, timeframe)
     clean_df = _clean_candle_df(df)
@@ -308,7 +300,7 @@ def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=Non
         return _build_no_ai_response(spec, empty_ctx)
 
     ctx = _build_market_context(clean_df, spec, live_price)
-    predictor = load_kronos_base()
+    predictor = load_kronos_base(spec.name, spec.model_revision)
     if predictor is not None and len(clean_df) >= 25:
         try:
             print(f"[AI KRONOS] Đang chạy suy luận K-line cho {symbol_name} ({timeframe})...")
@@ -321,7 +313,8 @@ def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=Non
                 f"[AI KRONOS PHÂN TÍCH] {symbol_name} ({timeframe}): {direction} | Dự phóng: {forecast.pct_change:+.2f}% "
                 f"| Đồng thuận: {forecast.agreement_pct}% | ADX: {ctx.adx:.1f} | Tin cậy: {conf}%"
             )
-            return {
+            model_src = getattr(predictor, "model_source", f"{config.KRONOS_MODEL_NAME}@{spec.model_revision}")
+            payload = {
                 "current_price": round(ctx.entry_price, d), "ref_close": round(ctx.ref_close, d),
                 "direction": direction, "confidence": conf, "tp": round(tp, d), "sl": round(sl, d),
                 "atr": ctx.atr, "ai_predicted": True, "slippage_blocked": slip_blocked,
@@ -329,9 +322,10 @@ def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=Non
                 "pred_high": round(forecast.pred_high, d), "pred_low": round(forecast.pred_low, d),
                 "adx": ctx.adx, "ema_50": round(ctx.ema_50, d), "ema_200": round(ctx.ema_200, d),
                 "sample_agreement": forecast.agreement_pct, "sample_std_pct": forecast.std_pct,
-                "forecast_window_vn": forecast.forecast_window_vn,
-                "strategy_version": getattr(config, "STRATEGY_VERSION", "v3.3-p1-audit"),
+                "forecast_window_vn": forecast.forecast_window_vn, "model_source": model_src,
+                "strategy_version": getattr(config, "STRATEGY_VERSION", "v4.0-dual-kronos-meta"),
             }
+            return _attach_meta_score(symbol_name, payload)
         except Exception as e:
             print(f"[CẢNH BÁO AI] Lỗi trong quá trình suy luận Kronos: {e}")
 
