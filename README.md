@@ -33,5 +33,28 @@ Dự án ứng dụng mô hình nền tảng AI tài chính chính thức **Kron
 ## 🚀 Kích hoạt chạy thử trên GitHub Actions
 
 1. Truy cập tab **Actions**: [github.com/kingescaped/xauusd_signal_bot/actions](https://github.com/kingescaped/xauusd_signal_bot/actions)
-2. Chọn workflow **"Kronos-base Gold & Bitcoin Signal Bot"**.
-3. Nhấn nút **"Run workflow"** ➔ Mô hình Kronos-base sẽ quét nến BTC (M15) & Vàng (1H) và gửi ảnh biểu đồ trực quan vào nhóm Telegram của bạn!
+2. Chọn workflow **"VÀNG Đánh BTC Signal Bot"**.
+3. Nhấn nút **"Run workflow"**, chọn chế độ trong mục **`Chọn chế độ chạy:`** rồi bấm chạy.
+
+---
+
+## ⚙️ Giải thích các chế độ chạy (`Chọn chế độ chạy`)
+
+| Chế độ | Lệnh thực thi | Mục đích & Hành vi chi tiết | Lưu lịch sử (`signals_history.json`) |
+| :--- | :--- | :--- | :---: |
+| **`once`** *(mặc định)* | `python main.py --once` | **Quét nến tự động chuẩn:** Kiểm tra gửi báo cáo `06:00–06:14 VN`, cập nhật TP/SL cho lệnh đang mở, rồi quét AI bằng nến đã đóng (`BTC` M15 mọi chu kỳ; `XAU` H1 vào đầu giờ `phút < 15`). Chỉ gửi Telegram khi có kèo đạt chuẩn (`>= 75%`, qua bộ lọc EMA/ADX/trượt giá); giữ im lặng khi Sideway hoặc ngoài giờ. | Có (nếu có kèo mới hoặc chạm TP/SL) |
+| **`report`** | `python main.py --report` | **Gửi báo cáo ngày ngay lập tức:** Tổng kết toàn bộ tín hiệu của **ngày hôm qua** (`00:00 – 23:59` giờ VN) và gửi vào nhóm Telegram. Không quét nến mới. | Không |
+| **`report-week`** | `python main.py --report-week` | **Gửi báo cáo tổng kết tuần ngay lập tức:** Thống kê kết quả Thứ Hai – Thứ Sáu (cuối tuần tự tính tuần vừa qua; ngày thường tính tuần hiện tại) kèm Win Rate từng mã và gửi vào Telegram. Không quét nến mới. | Không |
+| **`force`** | `python main.py --once --force` | **Ép buộc gửi ảnh phân tích:** Bỏ qua giới hạn đầu giờ của Vàng H1 và luôn gửi ảnh biểu đồ + nhận định vào Telegram kể cả khi thị trường Sideway, độ tin cậy `< 75%`, hoặc AI tạm lỗi *(vẫn bỏ qua Vàng nếu đang đóng cửa thị trường)*. | Chỉ lưu nếu thực sự đạt kèo chuẩn hoặc chạm TP/SL |
+| **`test`** | `python main.py --test` | **Kiểm tra kết nối Telegram:** Gửi một tin nhắn chào thử nghiệm vào nhóm để xác nhận Bot Token & Group ID hoạt động. Không tải model AI, không quét nến. | Không |
+
+### 🔑 Điều kiện tiên quyết & kiểm tra đầu vào
+
+- **Giá trị đầu vào `action`:** Bắt buộc chọn một trong `once`, `report`, `report-week`, `force`, `test` (mặc định `once`).
+- **GitHub Secrets bắt buộc:** Thiết lập tại [Settings → Secrets and variables → Actions](https://github.com/kingescaped/xauusd_signal_bot/settings/secrets/actions) trước khi chạy bất kỳ chế độ nào:
+  - `TELEGRAM_BOT_TOKEN`: Token bot lấy từ [@BotFather](https://t.me/BotFather) trên Telegram (bắt buộc — thiếu hoặc sai sẽ lỗi gửi tin).
+  - `TELEGRAM_GROUP_ID`: Chat ID nhóm/kênh Telegram nhận thông báo, thường dạng `-100...` (thêm bot vào nhóm và lấy ID qua bot hỗ trợ hoặc Telegram `getUpdates`).
+  - `HF_TOKEN` *(khuyến nghị)*: Token quyền Read tạo tại [Hugging Face Tokens](https://huggingface.co/settings/tokens) để tránh giới hạn tốc độ tải trọng số `Kronos-base`.
+- **Dữ liệu & giờ giao dịch:**
+  - `report` và `report-week` đọc từ `signals_history.json`; nếu file chưa tồn tại thì báo cáo hiển thị `0` lệnh (file được tạo/cập nhật tự động khi `once`/`force` phát sinh hoặc đóng lệnh).
+  - `force` vẫn không gửi biểu đồ cho Vàng (`XAUUSD`) trong thời gian đóng cửa cuối tuần (`05:00` Thứ Bảy – `06:00` Thứ Hai VN) và giờ nghỉ kỹ thuật (`05:00–06:00` Thứ Ba – Thứ Sáu VN).
