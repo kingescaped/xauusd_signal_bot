@@ -149,7 +149,20 @@ def _validate_entry_distance(symbol, open_signals, direction, entry_price, atr):
     return None
 
 
-def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m", atr=None):
+_METADATA_KEYS = (
+    "confidence", "pct_change", "pred_end_price", "pred_high", "pred_low",
+    "ref_close", "atr", "adx", "ema_50", "ema_200",
+    "sample_agreement", "sample_std_pct", "strategy_version",
+)
+
+
+def _extract_signal_metadata(metadata):
+    if not isinstance(metadata, dict):
+        return {}
+    return {k: metadata[k] for k in _METADATA_KEYS if k in metadata and metadata[k] is not None}
+
+
+def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="15m", atr=None, metadata=None):
     history = load_history()
     for sig in history:
         if sig.get("symbol") == symbol and str(sig.get("open_time")) == str(time_str):
@@ -166,12 +179,14 @@ def add_new_signal(symbol, direction, entry_price, tp, sl, time_str, timeframe="
 
     now_vn = datetime.now(VN_TZ)
     signal_id = f"{symbol}_{now_vn.strftime('%Y%m%d_%H%M%S')}"
-    history.append({
+    new_sig = {
         "id": signal_id, "symbol": symbol, "timeframe": timeframe, "direction": direction,
         "entry_price": entry_price, "tp": tp, "sl": sl, "open_time": time_str,
         "open_time_vn": now_vn.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "OPEN", "closed_at": None, "close_price": None, "order_num": len(open_signals) + 1,
-    })
+    }
+    new_sig.update(_extract_signal_metadata(metadata))
+    history.append(new_sig)
     save_history(history)
     return True, signal_id
 
@@ -253,20 +268,20 @@ def generate_daily_report(target_date=None):
 
     total, hit_tp, hit_sl, running, win_rate, (gold_tp, gold_sl, _), (btc_tp, btc_sl, _) = _summarize_window(target_date, target_date)
     return (
-        "📊 *[VÀNG Đánh BTC] - BÁO CÁO HIỆU SUẤT NGÀY*\n"
-        f"📅 *Ngày tổng kết:* `{target_date.strftime('%d/%m/%Y')}`\n"
+        "📊 <b>[VÀNG Đánh BTC] - BÁO CÁO HIỆU SUẤT NGÀY</b>\n"
+        f"📅 <b>Ngày tổng kết:</b> <code>{target_date.strftime('%d/%m/%Y')}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📈 *Tổng số tín hiệu phát:* `{total}`\n"
-        f"🎯 *Đạt mục tiêu (TP):* `{hit_tp}` lệnh\n"
-        f"🛑 *Cắt lỗ (SL):* `{hit_sl}` lệnh\n"
-        f"⏳ *Đang chạy (Running):* `{running}` lệnh\n"
-        f"🏆 *Tỷ lệ thắng (Win Rate):* *{win_rate:.1f}%*\n"
+        f"📈 <b>Tổng số tín hiệu phát:</b> <code>{total}</code>\n"
+        f"🎯 <b>Đạt mục tiêu (TP):</b> <code>{hit_tp}</code> lệnh\n"
+        f"🛑 <b>Cắt lỗ (SL):</b> <code>{hit_sl}</code> lệnh\n"
+        f"⏳ <b>Đang chạy (Running):</b> <code>{running}</code> lệnh\n"
+        f"🏆 <b>Tỷ lệ thắng (Win Rate):</b> <b>{win_rate:.1f}%</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "*Chi tiết theo sản phẩm:*\n"
-        f"🟡 *Vàng (XAUUSD - H1):* `{gold_tp}` TP / `{gold_sl}` SL\n"
-        f"🟠 *Bitcoin (BTCUSD - M15):* `{btc_tp}` TP / `{btc_sl}` SL\n"
+        "<b>Chi tiết theo sản phẩm:</b>\n"
+        f"🟡 <b>Vàng (XAUUSD - H1):</b> <code>{gold_tp}</code> TP / <code>{gold_sl}</code> SL\n"
+        f"🟠 <b>Bitcoin (BTCUSD - M15):</b> <code>{btc_tp}</code> TP / <code>{btc_sl}</code> SL\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 _Hệ thống tự động tiếp tục quét chu kỳ mới ngày hôm nay._"
+        "💡 <i>Hệ thống tự động tiếp tục quét chu kỳ mới ngày hôm nay.</i>"
     )
 
 
@@ -290,18 +305,18 @@ def generate_weekly_report(ref_date=None):
     monday_date, friday_date = _resolve_week_bounds(ref_date)
     total, hit_tp, hit_sl, running, win_rate, (gold_tp, gold_sl, gold_win), (btc_tp, btc_sl, btc_win) = _summarize_window(monday_date, friday_date)
     return (
-        "🏆 *[VÀNG Đánh BTC] - BÁO CÁO TỔNG KẾT TUẦN*\n"
-        f"📅 *Giai đoạn:* Từ {monday_date.strftime('%d/%m/%Y')} đến {friday_date.strftime('%d/%m/%Y')}\n"
+        "🏆 <b>[VÀNG Đánh BTC] - BÁO CÁO TỔNG KẾT TUẦN</b>\n"
+        f"📅 <b>Giai đoạn:</b> Từ {monday_date.strftime('%d/%m/%Y')} đến {friday_date.strftime('%d/%m/%Y')}\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📈 *Tổng số tín hiệu cả tuần:* `{total}`\n"
-        f"🎯 *Đạt mục tiêu (TP):* `{hit_tp}` lệnh\n"
-        f"🛑 *Cắt lỗ (SL):* `{hit_sl}` lệnh\n"
-        f"⏳ *Đang chạy (Running):* `{running}` lệnh\n"
-        f"🔥 *TỶ LỆ THẮNG TUẦN (WIN RATE):* *{win_rate:.1f}%*\n"
+        f"📈 <b>Tổng số tín hiệu cả tuần:</b> <code>{total}</code>\n"
+        f"🎯 <b>Đạt mục tiêu (TP):</b> <code>{hit_tp}</code> lệnh\n"
+        f"🛑 <b>Cắt lỗ (SL):</b> <code>{hit_sl}</code> lệnh\n"
+        f"⏳ <b>Đang chạy (Running):</b> <code>{running}</code> lệnh\n"
+        f"🔥 <b>TỶ LỆ THẮNG TUẦN (WIN RATE):</b> <b>{win_rate:.1f}%</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "*Chi tiết theo sản phẩm:*\n"
-        f"🟡 *Vàng (XAUUSD - H1):* `{gold_tp}` TP / `{gold_sl}` SL (Win: *{gold_win:.1f}%*)\n"
-        f"🟠 *Bitcoin (BTCUSD - M15):* `{btc_tp}` TP / `{btc_sl}` SL (Win: *{btc_win:.1f}%*)\n"
+        "<b>Chi tiết theo sản phẩm:</b>\n"
+        f"🟡 <b>Vàng (XAUUSD - H1):</b> <code>{gold_tp}</code> TP / <code>{gold_sl}</code> SL (Win: <b>{gold_win:.1f}%</b>)\n"
+        f"🟠 <b>Bitcoin (BTCUSD - M15):</b> <code>{btc_tp}</code> TP / <code>{btc_sl}</code> SL (Win: <b>{btc_win:.1f}%</b>)\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🎉 _Chúc anh em cuối tuần nghỉ ngơi vui vẻ! Hẹn gặp lại vào tuần tới._"
+        "🎉 <i>Chúc anh em cuối tuần nghỉ ngơi vui vẻ! Hẹn gặp lại vào tuần tới.</i>"
     )

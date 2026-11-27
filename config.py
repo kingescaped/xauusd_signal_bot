@@ -23,6 +23,8 @@ SYMBOLS = [
         "label": "BITCOIN (BTCUSD)",
         "timeframe": "15m",       # Khung M15 cho BTC
         "unit": "$",
+        "digits": 2,
+        "threshold": 0.55,
         "predict_len": 12,        # Dự báo 12 nến M15 (3 tiếng tới)
         "period": "5d"
     },
@@ -32,12 +34,15 @@ SYMBOLS = [
         "label": "VÀNG (XAUUSD)",
         "timeframe": "1h",        # Khung 1H cho Vàng (ít nhiễu, chuẩn kỹ thuật)
         "unit": "$",
+        "digits": 2,
+        "threshold": 0.30,
         "predict_len": 6,         # Dự báo 6 nến 1H (6 tiếng tới)
-        "period": "14d"
+        "period": "30d"
     }
 ]
 
-CANDLE_LIMIT = 200     # Lấy 200 nến context cho mô hình Kronos
+CANDLE_LIMIT = 200              # Context length fed into Kronos-base
+INDICATOR_CANDLE_LIMIT = 450    # Closed bars fetched for EMA200 / Wilder ATR & ADX convergence
 
 # Ngưỡng tin cậy tối thiểu để bắn tín hiệu (siết chặt từ 70% lên 75%)
 CONFIDENCE_THRESHOLD = 75.0
@@ -45,6 +50,11 @@ CONFIDENCE_THRESHOLD = 75.0
 # Ngưỡng biến động phần trăm tối thiểu trong chuỗi nến dự báo
 BTC_THRESHOLD = 0.55       # Tối thiểu 0.55% cho BTC (M15) để loại trừ nhiễu nhỏ
 GOLD_THRESHOLD = 0.30      # Tối thiểu 0.30% cho Vàng (1H)
+
+KRONOS_SAMPLE_COUNT = 5
+KRONOS_TEMPERATURE = 0.6
+KRONOS_TOP_P = 0.9
+STRATEGY_VERSION = "v3.2-p1-lite"
 
 # Cấu hình Quản lý Rủi ro TP / SL
 ATR_SL_MULTIPLIER = 1.5    # SL = 1.5 * ATR (nới rộng chống quét râu nến M15 & H1)

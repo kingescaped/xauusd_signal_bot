@@ -1,4 +1,5 @@
 import argparse
+import html
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -60,37 +61,41 @@ def _dispatch_telegram(chart_path, caption):
 
 def _build_signal_caption(item, result, tf_label):
     nhan_dinh = "Nhận định của Vàng" if item["name"] == "XAUUSD" else "Nhận định của BTC"
-    adx_info = f" | *ADX:* `{result.get('adx', 0):.1f}`" if "adx" in result else ""
-    unit = item["unit"]
+    digits = int(item.get("digits", 2))
+    adx_info = f" | <b>ADX:</b> <code>{result.get('adx', 0):.1f}</code>" if "adx" in result else ""
+    agree_info = f" | Đồng thuận: <code>{result['sample_agreement']}%</code>" if "sample_agreement" in result else ""
+    unit = html.escape(str(item["unit"]))
     return (
-        f"🎯 *[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {item['label']}*\n"
+        f"🎯 <b>[VÀNG Đánh BTC] - TÍN HIỆU VÀO LỆNH {html.escape(item['label'])}</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 *Sản phẩm:* `{item['name']}` | *Khung:* `{tf_label}`\n"
-        f"💰 *Giá vào (Entry):* `{result['current_price']} {unit}`\n"
-        f"🚀 *Tín hiệu:* *{result['direction']}*\n"
-        f"📈 *Độ tin cậy:* `{result['confidence']}%` (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%)\n"
-        f"🔮 *Kỳ vọng:* `{result['pct_change']:+.2f}%` ({item['predict_len']} nến tới)\n"
+        f"📊 <b>Sản phẩm:</b> <code>{html.escape(item['name'])}</code> | <b>Khung:</b> <code>{html.escape(tf_label)}</code>\n"
+        f"💰 <b>Giá vào (Entry):</b> <code>{result['current_price']:.{digits}f} {unit}</code>\n"
+        f"🚀 <b>Tín hiệu:</b> <b>{html.escape(result['direction'])}</b>\n"
+        f"📈 <b>Độ tin cậy:</b> <code>{result['confidence']}%</code> (Đạt chuẩn ≥ {config.CONFIDENCE_THRESHOLD}%){agree_info}\n"
+        f"🔮 <b>Kỳ vọng:</b> <code>{result['pct_change']:+.2f}%</code> ({item['predict_len']} nến tới)\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 *Mục tiêu (TP):* `{result['tp']} {unit}`\n"
-        f"🛑 *Cắt lỗ (SL):* `{result['sl']} {unit}`\n"
-        f"⚡ *Biến động ATR:* `{result['atr']}`{adx_info}\n\n"
-        f"💡 *{nhan_dinh}:* Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
-        "⚠️ _Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!_"
+        f"🎯 <b>Mục tiêu (TP):</b> <code>{result['tp']:.{digits}f} {unit}</code>\n"
+        f"🛑 <b>Cắt lỗ (SL):</b> <code>{result['sl']:.{digits}f} {unit}</code>\n"
+        f"⚡ <b>Biến động ATR:</b> <code>{result['atr']}</code>{adx_info}\n\n"
+        f"💡 <b>{nhan_dinh}:</b> Tín hiệu theo đà xu hướng đang đẹp, kỳ vọng đạt mục tiêu TP!\n\n"
+        "⚠️ <i>Hệ thống [VÀNG Đánh BTC] tự động theo dõi TP/SL và tổng kết lúc 06:00 sáng!</i>"
     )
 
 
 def _build_force_caption(item, result, tf_label):
     nhan_dinh = "Nhận định của Vàng" if item["name"] == "XAUUSD" else "Nhận định của BTC"
-    ai_note = "" if result.get("ai_predicted", False) else "\n⚠️ *[CẢNH BÁO: Kronos AI không khả dụng, không tạo tín hiệu giao dịch]*"
+    digits = int(item.get("digits", 2))
+    unit = html.escape(str(item["unit"]))
+    ai_note = "" if result.get("ai_predicted", False) else "\n⚠️ <b>[CẢNH BÁO: Kronos AI không khả dụng, không tạo tín hiệu giao dịch]</b>"
     return (
-        f"📊 *[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {item['label']}*\n"
+        f"📊 <b>[VÀNG Đánh BTC] - CẬP NHẬT PHÂN TÍCH {html.escape(item['label'])}</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 *Sản phẩm:* `{item['name']}` | *Khung:* `{tf_label}`\n"
-        f"💰 *Giá hiện tại:* `{result['current_price']} {item['unit']}`\n"
-        f"🎯 *Trạng thái:* *{result['direction']}*\n"
-        f"📈 *Độ tin cậy:* `{result['confidence']}%` *(Cần ≥ {config.CONFIDENCE_THRESHOLD}% để vào lệnh)*\n"
+        f"📊 <b>Sản phẩm:</b> <code>{html.escape(item['name'])}</code> | <b>Khung:</b> <code>{html.escape(tf_label)}</code>\n"
+        f"💰 <b>Giá hiện tại:</b> <code>{result['current_price']:.{digits}f} {unit}</code>\n"
+        f"🎯 <b>Trạng thái:</b> <b>{html.escape(result['direction'])}</b>\n"
+        f"📈 <b>Độ tin cậy:</b> <code>{result['confidence']}%</code> <i>(Cần ≥ {config.CONFIDENCE_THRESHOLD}% để vào lệnh)</i>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 *{nhan_dinh}:* Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!{ai_note}"
+        f"💡 <b>{nhan_dinh}:</b> Thị trường đang Sideway / đi ngang tích lũy, chưa xuất hiện điểm vào lệnh có xác suất thắng cao. Tiếp tục quan sát!{ai_note}"
     )
 
 
@@ -105,10 +110,10 @@ def _handle_symbol_result(item, df, time_str, result, manual_force):
 
     tf_label = "M15" if timeframe.lower() == "15m" else "H1"
     chart_path = os.path.join(os.path.dirname(__file__), f"chart_{symbol_name.lower()}.png")
-    create_signal_chart(df=df, symbol_name=symbol_name, symbol_label=label, timeframe=timeframe, unit=item["unit"], predicted_direction=result["direction"], current_price=result["current_price"], tp=result["tp"], sl=result["sl"], output_path=chart_path)
+    create_signal_chart(df=df, symbol_name=symbol_name, symbol_label=label, timeframe=timeframe, unit=item["unit"], predicted_direction=result["direction"], current_price=result["current_price"], tp=result["tp"], sl=result["sl"], output_path=chart_path, digits=int(item.get("digits", 2)))
 
     if is_high_conf:
-        added, reason = add_new_signal(symbol=symbol_name, direction=result["direction"], entry_price=result["current_price"], tp=result["tp"], sl=result["sl"], time_str=time_str, timeframe=timeframe, atr=result.get("atr", 1.0))
+        added, reason = add_new_signal(symbol=symbol_name, direction=result["direction"], entry_price=result["current_price"], tp=result["tp"], sl=result["sl"], time_str=time_str, timeframe=timeframe, atr=result.get("atr", 1.0), metadata=result)
         if added:
             print(f"-> {symbol_name}: 🚀 Bắn tín hiệu vào nhóm Telegram thành công! (Mã: {reason})")
             _dispatch_telegram(chart_path, _build_signal_caption(item, result, tf_label))
@@ -138,7 +143,8 @@ def _process_symbol(item, now_vn, manual_force):
         return
 
     print(f"\n--- Đang xử lý: {label} (Khung {timeframe.upper()}) ---")
-    df = get_candles(ticker, timeframe=timeframe, period=period, limit=config.CANDLE_LIMIT + 1)
+    fetch_limit = getattr(config, "INDICATOR_CANDLE_LIMIT", config.CANDLE_LIMIT) + 1
+    df = get_candles(ticker, timeframe=timeframe, period=period, limit=fetch_limit)
     if df is None or len(df) == 0:
         print(f"[BỎ QUA] Không đủ nến cho {label}.")
         return

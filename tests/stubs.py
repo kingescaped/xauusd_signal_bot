@@ -14,6 +14,16 @@ class FakeSeries:
     def __len__(self):
         return len(self._arr)
 
+    def __array__(self, dtype=None, copy=None):
+        return self._arr if dtype is None else self._arr.astype(dtype)
+
+    def __add__(self, other):
+        val = other._arr if isinstance(other, FakeSeries) else other
+        return FakeSeries(self._arr + val)
+
+    def __radd__(self, other):
+        return self.__add__(other)
+
     def __sub__(self, other):
         val = other._arr if isinstance(other, FakeSeries) else other
         return FakeSeries(self._arr - val)
@@ -114,10 +124,17 @@ class _Ewm:
         self._alpha = alpha
 
     def mean(self):
-        out = np.empty_like(self._arr, dtype=float)
-        out[0] = self._arr[0]
-        for i in range(1, len(self._arr)):
-            out[i] = self._alpha * self._arr[i] + (1.0 - self._alpha) * out[i - 1]
+        out = np.full_like(self._arr, np.nan, dtype=float)
+        prev = np.nan
+        for i, val in enumerate(self._arr):
+            if np.isnan(val):
+                out[i] = prev
+            elif np.isnan(prev):
+                prev = val
+                out[i] = val
+            else:
+                prev = self._alpha * val + (1.0 - self._alpha) * prev
+                out[i] = prev
         return FakeSeries(out)
 
 
@@ -156,13 +173,34 @@ class FakeDataFrame:
             return _TimeSeries(vals)
         return FakeSeries(vals)
 
+    @property
+    def index(self):
+        return list(range(len(self)))
+
     def __setitem__(self, key, val):
         if isinstance(val, FakeSeries):
             self._data[key] = list(val._arr)
+        elif isinstance(val, _TimeSeries):
+            self._data[key] = list(val._vals)
         else:
             self._data[key] = list(val)
         if key not in self.columns:
             self.columns.append(key)
+
+    def set_index(self, col, inplace=False):
+        target = self if inplace else self.copy()
+        target._data.pop(col, None)
+        if col in target.columns:
+            target.columns.remove(col)
+        return None if inplace else target
+
+    def rename(self, columns=None, inplace=False):
+        target = self if inplace else self.copy()
+        for old, new in (columns or {}).items():
+            if old in target._data:
+                target._data[new] = target._data.pop(old)
+                target.columns = [new if c == old else c for c in target.columns]
+        return None if inplace else target
 
     def copy(self):
         return FakeDataFrame(self._data)
@@ -274,7 +312,7 @@ def install_missing_stubs():
     _install_torch_stub()
     simple_stubs = {
         "yfinance": {"download": lambda *a, **k: FakeDataFrame({})},
-        "requests": {"post": lambda *a, **k: None},
+        "requests": {"post": lambda *a, **k: None, "RequestException": Exception},
         "schedule": {"every": lambda *a, **k: types.SimpleNamespace(minutes=types.SimpleNamespace(do=lambda fn: None)), "run_pending": lambda: None},
         "matplotlib": {"use": lambda *a, **k: None, "__path__": []},
         "matplotlib.pyplot": {"close": lambda *a, **k: None},
