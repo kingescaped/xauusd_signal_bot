@@ -1,0 +1,30 @@
+name: Monthly Kaggle GPU Fine-Tune
+
+on:
+  # Cho phép bấm nút "Run workflow" hoặc gọi tự động mồng 1 hàng tháng từ cron-job.org
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monthly-finetune-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  trigger-kaggle-gpu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Kéo mã nguồn từ Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Cài đặt môi trường Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 🚀 Đẩy và kích hoạt Fine-tune GPU T4 trên Kaggle
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: python kaggle_push.py
