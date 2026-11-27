@@ -30,7 +30,12 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "")
 
 KRONOS_MODEL_NAME = os.getenv("KRONOS_MODEL_NAME", "kingescaped/lvq-std-BOT")
 KRONOS_FALLBACK_MODEL_NAME = os.getenv("KRONOS_FALLBACK_MODEL_NAME", "NeoQuasar/Kronos-base")
-KRONOS_TOKENIZER_NAME = os.getenv("KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
+KRONOS_TOKENIZER_NAME = os.getenv("KRONOS_TOKENIZER_NAME", "kingescaped/lvq-std-BOT")
+KRONOS_TOKENIZER_REVISION = os.getenv(
+    "KRONOS_TOKENIZER_REVISION",
+    "tokenizer" if KRONOS_TOKENIZER_NAME == KRONOS_MODEL_NAME else "",
+)
+KRONOS_FALLBACK_TOKENIZER_NAME = os.getenv("KRONOS_FALLBACK_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
 hf_token_val = os.getenv("HF_TOKEN", "").strip()
 HF_TOKEN = hf_token_val if hf_token_val else None
 if HF_TOKEN:

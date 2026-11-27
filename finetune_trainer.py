@@ -4,7 +4,7 @@ import os
 import tempfile
 import torch
 import config
-from kronos_loader import resolve_hf_token
+from kronos_loader import load_tokenizer_instance, resolve_hf_token
 
 
 @dataclass(frozen=True)
@@ -74,13 +74,8 @@ def _train_one_epoch(model, tokenizer, train_loader, optimizer, scheduler_and_cl
 def _load_starting_models(repo_id, branch, hf_token, device):
     from model import Kronos, KronosTokenizer
 
-    tok_name = getattr(config, "KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
     fallback_repo = getattr(config, "KRONOS_FALLBACK_MODEL_NAME", "NeoQuasar/Kronos-base")
-    try:
-        tokenizer = KronosTokenizer.from_pretrained(tok_name, token=hf_token).to(device)
-    except Exception:
-        tokenizer = KronosTokenizer.from_pretrained(tok_name, token=False).to(device)
-    tokenizer.eval()
+    tokenizer = load_tokenizer_instance(KronosTokenizer, hf_token).to(device)
     for param in tokenizer.parameters():
         param.requires_grad = False
 

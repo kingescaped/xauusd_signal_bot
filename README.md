@@ -24,7 +24,7 @@ Hệ thống giao dịch định lượng ứng dụng mô hình nền tảng AI
 * **Cách tạo nếu thiếu:** File `meta_model_state.json` được tạo tự động vào sáng Thứ Bảy hàng tuần hoặc tạo ngay bất kỳ lúc nào bằng cách chạy chế độ **`train-meta`** trong bảng hướng dẫn bên dưới.
 
 ### Cơ chế Chuyển đổi An toàn Không Gián Đoạn (Zero-Downtime Fallback)
-* Cả 2 cặp dùng chung 1 bộ mã hóa [`NeoQuasar/Kronos-Tokenizer-base`](https://huggingface.co/NeoQuasar/Kronos-Tokenizer-base) nạp 1 lần duy nhất trong bộ nhớ.
+* Cả 2 cặp dùng chung 1 bộ mã hóa từ nhánh Private [`kingescaped/lvq-std-BOT@tokenizer`](https://huggingface.co/kingescaped/lvq-std-BOT/tree/tokenizer) (tự động lùi về [`NeoQuasar/Kronos-Tokenizer-base`](https://huggingface.co/NeoQuasar/Kronos-Tokenizer-base) nếu cần) nạp 1 lần duy nhất trong bộ nhớ.
 * Khi quét từng cặp, bot ưu tiên nạp `kingescaped/lvq-std-BOT@btc-m15` (hoặc `xau-h1`) → nếu nhánh chưa sẵn sàng sẽ tự lùi về `kingescaped/lvq-std-BOT@main` → nếu thiếu quyền `HF_TOKEN` hoặc chưa đồng bộ `model.safetensors` sẽ **tự động lùi về `NeoQuasar/Kronos-base` công khai mà không phát sinh lỗi dừng bot**.
 
 ---
@@ -42,7 +42,7 @@ Hệ thống giao dịch định lượng ứng dụng mô hình nền tảng AI
 | Chế độ | Lệnh thực thi | Mục đích & Hành vi chi tiết | Lưu trạng thái vào Repo |
 | :--- | :--- | :--- | :---: |
 | **`once`** *(mặc định)* | `python main.py --once` | **Quét nến tự động chuẩn:** Kiểm tra gửi báo cáo `06:00 VN` (kèm huấn luyện Meta-Model sáng Thứ Bảy), cập nhật TP/SL lệnh mở, quét AI bằng nến đã đóng (`BTC` M15 mọi chu kỳ; `XAU` H1 đầu giờ `phút < 15`), chấm điểm/lọc Meta-Model và gửi Telegram khi đạt chuẩn (`>= 75%`). | Có (`signals_history.json`, `bot_state.json`, `meta_model_state.json`) |
-| **`sync-hf`** | `python main.py --sync-hf` | **Khởi tạo / đồng bộ Hugging Face Private:** Tự động kiểm tra repo Private `kingescaped/lvq-std-BOT`, sao chép `config.json`, `model.safetensors` (409 MB), `README.md` từ `NeoQuasar/Kronos-base` lên `main` và tạo đủ 2 nhánh `btc-m15`, `xau-h1`. Chỉ cần bấm **1 lần đầu tiên** sau khi cập nhật `HF_TOKEN` quyền Write. | Không (lưu trên Hugging Face) |
+| **`sync-hf`** | `python main.py --sync-hf` | **Khởi tạo / đồng bộ Hugging Face Private:** Tự động kiểm tra repo Private `kingescaped/lvq-std-BOT`, sao chép `Kronos-base` (409 MB) lên `main`, `btc-m15`, `xau-h1` và sao chép `Kronos-Tokenizer-base` (15.1 MB) lên nhánh `tokenizer`. | Không (lưu trên Hugging Face) |
 | **`train-meta`** | `python main.py --train-meta` | **Huấn luyện lại Meta-Model ngay:** Quét toàn bộ lệnh sạch đã đóng trong `signals_history.json`, cập nhật trọng số Logistic L2 và trạng thái kích hoạt (`>= 100` lệnh sạch) vào `meta_model_state.json`. | Có (`meta_model_state.json`) |
 | **`report`** | `python main.py --report` | **Gửi báo cáo ngày ngay lập tức:** Tổng kết tín hiệu của **ngày hôm qua** (`00:00 – 23:59` giờ VN) và gửi vào nhóm Telegram. | Không |
 | **`report-week`** | `python main.py --report-week` | **Gửi báo cáo tổng kết tuần ngay lập tức:** Thống kê kết quả Thứ Hai – Thứ Sáu kèm Win Rate từng mã gửi vào Telegram. | Không |

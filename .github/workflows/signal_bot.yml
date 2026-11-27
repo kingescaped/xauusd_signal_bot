@@ -57,7 +57,7 @@ jobs:
           token = os.getenv("HF_TOKEN", "").strip()
           repo = "kingescaped/lvq-std-BOT"
           shas = []
-          for branch in ("btc-m15", "xau-h1", "main"):
+          for branch in ("tokenizer", "btc-m15", "xau-h1", "main"):
               url = f"https://huggingface.co/api/models/{repo}/revision/{branch}"
               req = urllib.request.Request(url)
               if token:

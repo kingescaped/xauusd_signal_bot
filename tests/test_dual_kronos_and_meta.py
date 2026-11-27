@@ -123,9 +123,18 @@ class TestDualKronosAndMeta(unittest.TestCase):
         self.assertIs(btc_pred, btc_cached)
         self.assertIsNot(btc_pred, xau_pred)
         self.assertEqual(len(tok_calls), 1)
+        self.assertEqual(tok_calls[0][0], "kingescaped/lvq-std-BOT")
+        self.assertEqual(tok_calls[0][1].get("revision"), "tokenizer")
         self.assertEqual(len(mod_calls), 2)
         self.assertEqual(btc_pred.model_source, "kingescaped/lvq-std-BOT@btc-m15")
         self.assertEqual(xau_pred.model_source, "kingescaped/lvq-std-BOT@xau-h1")
+
+        kronos_loader.reset_loader_cache()
+        tok_calls.clear()
+        with mock.patch.object(config, "KRONOS_TOKENIZER_NAME", "custom/standalone-tok"):
+            kronos_loader.load_tokenizer_instance(fake_pkg.KronosTokenizer, "hf_test_token")
+        self.assertEqual(tok_calls[0][0], "custom/standalone-tok")
+        self.assertIsNone(tok_calls[0][1].get("revision"))
 
     def test_fallback_uses_token_false_when_token_missing_or_expired(self):
         attempts = []
@@ -163,7 +172,7 @@ class TestDualKronosAndMeta(unittest.TestCase):
         self.assertEqual(attempts[-1], ("NeoQuasar/Kronos-base", None, False))
 
     def test_hf_repo_sync_creates_private_repo_and_syncs_missing_files(self):
-        created_repos, created_branches = [], []
+        created_repos, created_branches, folder_uploads = [], [], []
 
         class FakeApi:
             def __init__(self, token=None):
@@ -183,17 +192,25 @@ class TestDualKronosAndMeta(unittest.TestCase):
             def upload_file(self, **kw):
                 pass
 
+            def upload_folder(self, **kw):
+                folder_uploads.append(kw["revision"])
+
+        src_file = os.path.join(self.tmp_dir.name, "dummy_src.json")
+        with open(src_file, "w", encoding="utf-8") as f:
+            json.dump({"n_layers": 12}, f)
+
         fake_hf = types.ModuleType("huggingface_hub")
         fake_hf.HfApi = FakeApi
-        fake_hf.hf_hub_download = lambda repo_id, filename, repo_type, token=False: f"/tmp/{filename}"
+        fake_hf.hf_hub_download = lambda repo_id, filename, repo_type, **kw: src_file
 
         with mock.patch.dict(sys.modules, {"huggingface_hub": fake_hf}):
             summary = hf_repo_sync.sync_base_to_private_repo(token="hf_write_tok")
 
         self.assertTrue(created_repos[0]["private"])
-        self.assertEqual([b["branch"] for b in created_branches], ["btc-m15", "xau-h1"])
+        self.assertEqual([b["branch"] for b in created_branches], ["btc-m15", "xau-h1", "tokenizer"])
         self.assertEqual(summary["branches"]["main"], ["model.safetensors"])
         self.assertIn("model.safetensors", summary["branches"]["xau-h1"])
+        self.assertEqual(folder_uploads, ["tokenizer"])
 
     def test_meta_shadow_mode_and_midweek_crossing_100_activates_immediately(self):
         legacy = [{"id": f"OLD_{i}", "symbol": "BTCUSD", "status": "HIT_SL", "entry_price": 60000.0, "tp": 61000.0, "sl": 59500.0} for i in range(120)]

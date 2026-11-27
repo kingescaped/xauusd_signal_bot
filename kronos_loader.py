@@ -23,21 +23,42 @@ def reset_loader_cache():
     _PREDICTOR_CACHE.clear()
 
 
+def load_tokenizer_instance(tokenizer_cls, hf_token):
+    model_repo = getattr(config, "KRONOS_MODEL_NAME", "kingescaped/lvq-std-BOT")
+    tok_repo = getattr(config, "KRONOS_TOKENIZER_NAME", model_repo)
+    raw_rev = getattr(config, "KRONOS_TOKENIZER_REVISION", "tokenizer")
+    eff_rev = raw_rev if (tok_repo == model_repo or os.getenv("KRONOS_TOKENIZER_REVISION")) else ""
+    fallback_tok = getattr(config, "KRONOS_FALLBACK_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
+
+    candidates = [(tok_repo, eff_rev or None, hf_token)]
+    if eff_rev and tok_repo != model_repo:
+        candidates.append((tok_repo, None, hf_token))
+    if (fallback_tok, None) != (tok_repo, eff_rev or None):
+        candidates.append((fallback_tok, None, False))
+
+    last_err = None
+    for repo_id, rev, tok in candidates:
+        label = f"{repo_id}@{rev}" if rev else repo_id
+        try:
+            print(f"[AI KRONOS] Tải Tokenizer: {label}")
+            kwargs = {"token": tok}
+            if rev:
+                kwargs["revision"] = rev
+            instance = tokenizer_cls.from_pretrained(repo_id, **kwargs)
+            instance.eval()
+            return instance
+        except Exception as err:
+            last_err = err
+            print(f"[CẢNH BÁO AI] Chưa nạp được Tokenizer {label} ({err}) -> thử nguồn dự phòng...")
+    raise RuntimeError(last_err or "Could not load KronosTokenizer")
+
+
 def _load_shared_tokenizer(tokenizer_cls, hf_token):
     global _SHARED_TOKENIZER
     if _SHARED_TOKENIZER is not None:
         return _SHARED_TOKENIZER
-    tokenizer_name = getattr(config, "KRONOS_TOKENIZER_NAME", "NeoQuasar/Kronos-Tokenizer-base")
-    print(f"[AI KRONOS] Tải Tokenizer: {tokenizer_name}")
-    try:
-        tok = tokenizer_cls.from_pretrained(tokenizer_name, token=hf_token)
-    except Exception:
-        if not hf_token:
-            raise
-        tok = tokenizer_cls.from_pretrained(tokenizer_name, token=False)
-    tok.eval()
-    _SHARED_TOKENIZER = tok
-    return tok
+    _SHARED_TOKENIZER = load_tokenizer_instance(tokenizer_cls, hf_token)
+    return _SHARED_TOKENIZER
 
 
 def _build_model_candidates(primary_repo, revision, fallback_repo, hf_token):
