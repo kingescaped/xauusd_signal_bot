@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ======================================================
-echo    ĐANG CÀI ĐẶT CÁC THƯ VIỆN CHO KRONOS TELEGRAM BOT
+echo    ĐANG CÀI ĐẶT CÁC THƯ VIỆN CHO AI LVQ Std BOT
 echo ======================================================
 pip install -r requirements.txt
 echo.

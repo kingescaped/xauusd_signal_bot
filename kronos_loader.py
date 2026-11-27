@@ -40,7 +40,7 @@ def load_tokenizer_instance(tokenizer_cls, hf_token):
     for repo_id, rev, tok in candidates:
         label = f"{repo_id}@{rev}" if rev else repo_id
         try:
-            print(f"[AI KRONOS] Tải Tokenizer: {label}")
+            print(f"[AI LVQ Std BOT] Tải Tokenizer: {label}")
             kwargs = {"token": tok}
             if rev:
                 kwargs["revision"] = rev
@@ -83,7 +83,7 @@ def _build_model_candidates(primary_repo, revision, fallback_repo, hf_token):
 def _instantiate_from_candidate(kronos_cls, predictor_cls, tokenizer, candidate):
     repo_id, rev, tok = candidate
     source_label = f"{repo_id}@{rev}" if rev else repo_id
-    print(f"[AI KRONOS] Tải Mô hình: {source_label}")
+    print(f"[AI LVQ Std BOT] Tải Mô hình: {source_label}")
     kwargs = {"token": tok}
     if rev:
         kwargs["revision"] = rev
@@ -94,7 +94,7 @@ def _instantiate_from_candidate(kronos_cls, predictor_cls, tokenizer, candidate)
         predictor.model_source = source_label
     except AttributeError:
         pass
-    print(f"[AI KRONOS] Đã nạp thành công {source_label} vào bộ nhớ!\n")
+    print(f"[AI LVQ Std BOT] Đã nạp thành công {source_label} vào bộ nhớ!\n")
     return predictor
 
 
@@ -107,7 +107,7 @@ def load_predictor_for_target(symbol_name=None, revision=None):
 
     try:
         target_desc = f"{symbol_name} ({revision})" if symbol_name and revision else (primary_repo)
-        print(f"\n[AI KRONOS] Đang khởi động mô hình Kronos cho {target_desc}...")
+        print(f"\n[AI LVQ Std BOT] Đang khởi động mô hình cho {target_desc}...")
         from model import Kronos, KronosPredictor, KronosTokenizer
 
         hf_token = resolve_hf_token()
@@ -127,5 +127,5 @@ def load_predictor_for_target(symbol_name=None, revision=None):
 
         raise RuntimeError(last_err or "No valid Kronos model candidate")
     except Exception as exc:
-        print(f"[CẢNH BÁO AI] Không nạp được Kronos ({exc}). Tạm dừng bắn tín hiệu tự động.")
+        print(f"[CẢNH BÁO AI] Không nạp được AI LVQ Std BOT ({exc}). Tạm dừng bắn tín hiệu tự động.")
         return None

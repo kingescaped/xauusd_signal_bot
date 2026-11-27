@@ -105,7 +105,7 @@ def _build_force_caption(item, result, tf_label, block_note=None):
     nhan_dinh = "Nhận định của Vàng" if item["name"] == "XAUUSD" else "Nhận định của BTC"
     digits = int(item.get("digits", 2))
     unit = html.escape(str(item["unit"]))
-    ai_note = "" if result.get("ai_predicted", False) else "\n⚠️ <b>[CẢNH BÁO: Kronos AI không khả dụng, không tạo tín hiệu giao dịch]</b>"
+    ai_note = "" if result.get("ai_predicted", False) else "\n⚠️ <b>[CẢNH BÁO: AI LVQ Std BOT không khả dụng, không tạo tín hiệu giao dịch]</b>"
     if block_note:
         summary_text = f"Kèo phân tích đang thuận xu hướng nhưng <b>không mở lệnh mới</b> ({html.escape(block_note)})."
     else:
@@ -176,7 +176,7 @@ def _handle_symbol_result(item, df, time_str, result, manual_force=False):
     ai_ok = bool(result.get("ai_predicted", False))
     is_high_conf = ai_ok and result["confidence"] >= config.CONFIDENCE_THRESHOLD and "SIDEWAY" not in result["direction"]
     if not is_high_conf and not manual_force:
-        msg = "Kronos AI không khả dụng -> bỏ qua tín hiệu." if not ai_ok else f"Độ tin cậy {result['confidence']}% (< {config.CONFIDENCE_THRESHOLD}%) hoặc Sideway -> Giữ yên lặng tuyệt đối."
+        msg = "AI LVQ Std BOT không khả dụng -> bỏ qua tín hiệu." if not ai_ok else f"Độ tin cậy {result['confidence']}% (< {config.CONFIDENCE_THRESHOLD}%) hoặc Sideway -> Giữ yên lặng tuyệt đối."
         print(f"-> {symbol_name}: {msg}")
         return
 

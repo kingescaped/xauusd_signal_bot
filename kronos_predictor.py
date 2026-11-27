@@ -303,14 +303,14 @@ def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=Non
     predictor = load_kronos_base(spec.name, spec.model_revision)
     if predictor is not None and len(clean_df) >= 25:
         try:
-            print(f"[AI KRONOS] Đang chạy suy luận K-line cho {symbol_name} ({timeframe})...")
+            print(f"[AI LVQ Std BOT] Đang chạy suy luận K-line cho {symbol_name} ({timeframe})...")
             x_df, x_timestamp, y_timestamp, window_vn = _prepare_kronos_inputs(clean_df, spec, pred_len)
             pred_df, sample_dfs = _run_kronos_predict(predictor, x_df, x_timestamp, y_timestamp, pred_len)
             forecast = _summarize_samples(pred_df, sample_dfs, ctx.ref_close, spec, window_vn)
             direction, conf, tp, sl, slip_blocked = _apply_regime_filters(spec, ctx, forecast)
             d = spec.digits
             print(
-                f"[AI KRONOS PHÂN TÍCH] {symbol_name} ({timeframe}): {direction} | Dự phóng: {forecast.pct_change:+.2f}% "
+                f"[AI LVQ Std BOT PHÂN TÍCH] {symbol_name} ({timeframe}): {direction} | Dự phóng: {forecast.pct_change:+.2f}% "
                 f"| Đồng thuận: {forecast.agreement_pct}% | ADX: {ctx.adx:.1f} | Tin cậy: {conf}%"
             )
             model_src = getattr(predictor, "model_source", f"{config.KRONOS_MODEL_NAME}@{spec.model_revision}")
@@ -327,6 +327,6 @@ def predict_future(df, symbol_name, timeframe="15m", pred_len=12, live_price=Non
             }
             return _attach_meta_score(symbol_name, payload)
         except Exception as e:
-            print(f"[CẢNH BÁO AI] Lỗi trong quá trình suy luận Kronos: {e}")
+            print(f"[CẢNH BÁO AI] Lỗi trong quá trình suy luận AI LVQ Std BOT: {e}")
 
     return _build_no_ai_response(spec, ctx)

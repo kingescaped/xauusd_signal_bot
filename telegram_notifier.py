@@ -69,7 +69,7 @@ def send_telegram_photo(photo_path, caption):
 def test_telegram():
     test_msg = (
         "🤖 <b>[VÀNG Đánh BTC] - KẾT NỐI THÀNH CÔNG!</b>\n\n"
-        "Chào mừng bạn! Hệ thống bot tín hiệu AI Kronos đã kết nối thành công với nhóm Telegram này.\n"
+        "Chào mừng bạn! Hệ thống tín hiệu AI LVQ Std BOT đã kết nối thành công với nhóm Telegram này.\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "📊 <b>Sản phẩm theo dõi:</b>\n"
         "🟡 <b>Vàng (XAUUSD):</b> Khung H1 (1 Giờ)\n"
