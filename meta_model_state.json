@@ -1,0 +1,20 @@
+{
+  "updated_at_utc": "2026-11-27T13:51:42Z",
+  "clean_trade_count": 0,
+  "min_clean_trades": 100,
+  "threshold": 0.52,
+  "feature_names": [
+    "is_gold",
+    "is_buy",
+    "confidence_norm",
+    "abs_pct_change",
+    "agreement_norm",
+    "sample_std_pct",
+    "adx_norm",
+    "rr_ratio",
+    "ema50_dist_atr",
+    "is_dca"
+  ],
+  "filter_active": false,
+  "trained": false
+}
