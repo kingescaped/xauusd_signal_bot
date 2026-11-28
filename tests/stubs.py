@@ -255,10 +255,13 @@ class _ConcatResult:
         return FakeSeries(np.nanmax(self._mat, axis=axis))
 
 
-def _fake_to_datetime(vals):
+def _fake_to_datetime(vals, utc=False, **_kwargs):
+    from datetime import timezone
     if isinstance(vals, _TimeSeries):
         vals = vals._vals
-    parsed = [v if isinstance(v, datetime) else datetime.fromisoformat(str(v)) for v in vals]
+    parsed = [v if isinstance(v, datetime) else datetime.fromisoformat(str(v).replace("Z", "+00:00")) for v in vals]
+    if utc:
+        parsed = [dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc) for dt in parsed]
     return _TimeSeries(parsed)
 
 

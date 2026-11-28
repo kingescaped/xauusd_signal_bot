@@ -13,6 +13,7 @@ BINANCE_ENDPOINTS = (
 )
 PRICE_COLS = ("open", "high", "low", "close")
 ALL_FEATURE_COLS = ("open", "high", "low", "close", "volume", "amount")
+DEFAULT_FALLBACK_VAL_RATIO = 0.10
 
 
 def _request_binance_batch(symbol, interval, start_ms, end_ms, limit=1000):
@@ -37,7 +38,7 @@ def _finalize_ohlcv_dataframe(df):
     for col in PRICE_COLS:
         cleaned[col] = cleaned[col].astype(float)
     cleaned["time"] = pd.to_datetime(cleaned["time"], utc=True)
-    cleaned = cleaned.sort_values("time").drop_duplicates(subset=["time"]).reset_index(drop=True)
+    cleaned = cleaned.dropna(subset=["time"]).sort_values("time").drop_duplicates(subset=["time"]).reset_index(drop=True)
     cleaned["amount"] = cleaned["volume"] * cleaned[list(PRICE_COLS)].mean(axis=1)
     return cleaned[["time", *ALL_FEATURE_COLS]]
 
@@ -100,6 +101,70 @@ def fetch_gold_h1_candles(period="730d", ticker="GC=F", exness_csv_path=""):
     return _finalize_ohlcv_dataframe(closed_df)
 
 
+def _to_utc_epoch_seconds(raw_time):
+    if isinstance(raw_time, datetime):
+        dt = raw_time if raw_time.tzinfo is not None else raw_time.replace(tzinfo=timezone.utc)
+        return float(dt.timestamp())
+    if hasattr(raw_time, "timestamp"):
+        return float(raw_time.timestamp())
+    parsed = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+    dt = parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    return float(dt.timestamp())
+
+
+def _seconds_before_latest(time_col):
+    if hasattr(time_col, "dt"):
+        utc_series = pd.to_datetime(time_col, utc=True)
+        age_sec = -(utc_series - utc_series.iloc[-1]).dt.total_seconds().to_numpy(dtype=np.float64)
+    else:
+        raw_vals = getattr(time_col, "_vals", None)
+        items = raw_vals if raw_vals is not None else list(time_col)
+        epochs = np.asarray([_to_utc_epoch_seconds(v) for v in items], dtype=np.float64)
+        age_sec = epochs[-1] - epochs
+    if not np.isfinite(age_sec).all():
+        raise ValueError("Candle timestamps contain NaT or invalid values")
+    return age_sec
+
+
+def _extract_col_matrix(df, cols, dtype=np.float32):
+    sub = df[list(cols)]
+    if hasattr(sub, "values"):
+        return np.asarray(sub.values, dtype=dtype)
+    return np.column_stack([np.asarray(df[c], dtype=dtype) for c in cols])
+
+
+def _validate_feature_matrix(values):
+    if not np.isfinite(values).all():
+        raise ValueError("OHLCV dataset contains NaN or Inf values")
+    if (values[:, :4] <= 0).any():
+        raise ValueError("OHLC prices must be strictly positive")
+    if (values[:, 1] < values[:, 2]).any():
+        raise ValueError("Corrupted candle detected with high < low")
+
+
+def validate_recent_candles(df, val_days=30, min_bars=300):
+    if df is None or len(df) == 0:
+        raise ValueError("Empty candle dataframe")
+    _validate_feature_matrix(_extract_col_matrix(df, PRICE_COLS, dtype=np.float64))
+    age_sec = _seconds_before_latest(df["time"])
+    if (np.diff(age_sec) > 0).any():
+        raise ValueError("Candle timestamps are not sorted in ascending order")
+    recent_count = int(np.sum(age_sec <= float(val_days) * 86400.0))
+    if recent_count < int(min_bars):
+        raise ValueError(f"Insufficient recent candles in last {val_days}d: got {recent_count}, need >= {min_bars}")
+    return recent_count
+
+
+def compute_recency_weights(num_windows, min_weight=0.5, max_weight=1.5):
+    count = int(num_windows)
+    if count <= 0:
+        raise ValueError("num_windows must be positive")
+    if count == 1:
+        return np.ones(1, dtype=np.float64)
+    weights = np.linspace(float(min_weight), float(max_weight), count, dtype=np.float64)
+    return weights / np.mean(weights)
+
+
 def _extract_normalized_windows(values, stamps, indices, context_len, window_len):
     clip_bound = 5.0
     x_list, s_list = [], []
@@ -114,17 +179,32 @@ def _extract_normalized_windows(values, stamps, indices, context_len, window_len
     return np.stack(x_list, axis=0), np.stack(s_list, axis=0)
 
 
-def build_kronos_datasets(df, context_len=200, pred_len=12, stride=4, val_ratio=0.10):
+def _resolve_split_bar(df, window_len, pred_len, step, val_days):
+    total = len(df)
+    min_val = int(pred_len) + 1 + step * 2
+    fallback_split = total - max(int(total * DEFAULT_FALLBACK_VAL_RATIO), min_val)
+    if val_days is None or float(val_days) <= 0:
+        return fallback_split
+    age_sec = _seconds_before_latest(df["time"])
+    recent_mask = age_sec <= float(val_days) * 86400.0
+    time_split = int(np.argmax(recent_mask)) if recent_mask.any() else fallback_split
+    min_train = max(window_len + step * 10, int(total * 0.5))
+    if time_split < min_train or (total - time_split) < min_val:
+        return fallback_split
+    return time_split
+
+
+def build_kronos_datasets(df, context_len=200, pred_len=12, stride=4, val_days=30):
     window_len = int(context_len) + int(pred_len) + 1
     if len(df) < window_len * 2:
         raise ValueError(f"Need at least {window_len * 2} candles for train/val split, got {len(df)}")
 
-    values = df[list(ALL_FEATURE_COLS)].values.astype(np.float32)
+    values = _extract_col_matrix(df, ALL_FEATURE_COLS, dtype=np.float32)
+    _validate_feature_matrix(values)
     stamps = calc_time_stamps(pd.to_datetime(df["time"], utc=True)).values.astype(np.float32)
 
     step = max(int(stride), 1)
-    val_horizon = max(int(len(df) * float(val_ratio)), int(pred_len) + 1 + step * 2)
-    split_bar = len(df) - val_horizon
+    split_bar = _resolve_split_bar(df, window_len, pred_len, step, val_days)
     train_limit = split_bar - window_len + 1
     val_start = max(0, split_bar - int(context_len))
     train_indices = list(range(0, max(train_limit, 0), step))
